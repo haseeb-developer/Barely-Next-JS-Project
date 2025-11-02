@@ -34,6 +34,65 @@ export default function Home() {
             center.
           </p>
         </div>
+        {/* Dummy Buttons to Test Tailwind CSS */}
+        <div className="w-full space-y-6">
+          <h2 className="text-2xl font-bold text-black dark:text-zinc-50 mb-4">
+            Tailwind CSS Test Buttons
+          </h2>
+          
+          <div className="flex flex-wrap gap-4">
+            {/* Primary Button */}
+            <button className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg">
+              Primary Button
+            </button>
+
+            {/* Secondary Button */}
+            <button className="bg-purple-500 hover:bg-purple-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg">
+              Secondary Button
+            </button>
+
+            {/* Success Button */}
+            <button className="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg">
+              Success Button
+            </button>
+
+            {/* Danger Button */}
+            <button className="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg">
+              Danger Button
+            </button>
+
+            {/* Outline Button */}
+            <button className="border-2 border-blue-500 text-blue-500 hover:bg-blue-500 hover:text-white font-semibold py-2 px-6 rounded-lg transition-all duration-200">
+              Outline Button
+            </button>
+
+            {/* Rounded Full Button */}
+            <button className="bg-pink-500 hover:bg-pink-600 text-white font-semibold py-2 px-6 rounded-full transition-colors duration-200">
+              Rounded Full
+            </button>
+
+            {/* Large Button */}
+            <button className="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg text-lg transition-colors duration-200 shadow-lg hover:shadow-xl">
+              Large Button
+            </button>
+
+            {/* Small Button */}
+            <button className="bg-yellow-500 hover:bg-yellow-600 text-white font-medium py-1 px-4 rounded-md text-sm transition-colors duration-200">
+              Small Button
+            </button>
+
+            {/* Gradient Button */}
+            <button className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-semibold py-2 px-6 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg">
+              Gradient Button
+            </button>
+
+            {/* Disabled Button */}
+            <button className="bg-gray-400 text-gray-700 font-semibold py-2 px-6 rounded-lg cursor-not-allowed opacity-50">
+              Disabled Button
+            </button>
+          </div>
+        </div>
+
         <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
           <a
             className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
