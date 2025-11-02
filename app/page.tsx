@@ -7,9 +7,66 @@ import { BsFillBellFill, BsFillStarFill } from "react-icons/bs";
 import { AiOutlineMail, AiFillLike } from "react-icons/ai";
 import { HiOutlineMenu } from "react-icons/hi";
 import { MdFavorite, MdDashboard } from "react-icons/md";
+import { motion } from "framer-motion";
+import { v4 as uuidv4 } from "uuid";
+import { uniqueNamesGenerator, adjectives, colors, animals } from "unique-names-generator";
+import { Filter } from "bad-words";
+import toast from "react-hot-toast";
+import * as Popover from "@radix-ui/react-popover";
+import * as Tooltip from "@radix-ui/react-tooltip";
+import * as Dialog from "@radix-ui/react-dialog";
 
 export default function Home() {
   const [clickCount, setClickCount] = useState(0);
+  const [generatedUUID, setGeneratedUUID] = useState<string>("");
+  const [generatedName, setGeneratedName] = useState<string>("");
+  const [profanityText, setProfanityText] = useState<string>("");
+  const [profanityResult, setProfanityResult] = useState<string>("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const generateUUID = () => {
+    const newUUID = uuidv4();
+    setGeneratedUUID(newUUID);
+    toast.success("UUID generated!");
+  };
+
+  const generateUniqueName = () => {
+    const name = uniqueNamesGenerator({
+      dictionaries: [adjectives, colors, animals],
+      separator: "-",
+      style: "lowerCase",
+    });
+    setGeneratedName(name);
+    toast.success("Unique name generated!");
+  };
+
+  const checkProfanity = (text: string) => {
+    setProfanityText(text);
+    const filter = new Filter();
+    if (filter.isProfane(text)) {
+      setProfanityResult(`❌ Contains profanity! Cleaned: "${filter.clean(text)}"`);
+      toast.error("Profanity detected!");
+    } else {
+      setProfanityResult("✅ No profanity detected!");
+      toast.success("Text is clean!");
+    }
+  };
+
+  const showToast = (type: string) => {
+    switch (type) {
+      case "success":
+        toast.success("This is a success toast!");
+        break;
+      case "error":
+        toast.error("This is an error toast!");
+        break;
+      case "loading":
+        toast.loading("Loading...");
+        break;
+      default:
+        toast("This is a default toast!");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-8">
@@ -200,6 +257,233 @@ export default function Home() {
             <div className="bg-purple-500 text-white px-4 py-2 rounded-lg">Purple</div>
             <div className="bg-yellow-500 text-white px-4 py-2 rounded-lg">Yellow</div>
             <div className="bg-pink-500 text-white px-4 py-2 rounded-lg">Pink</div>
+          </div>
+        </div>
+
+        {/* Framer Motion Test */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+            Framer Motion Test
+          </h2>
+          <div className="grid md:grid-cols-3 gap-6">
+            <motion.div
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              className="p-6 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg text-white text-center cursor-pointer"
+            >
+              Hover & Tap Me!
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="p-6 bg-gradient-to-br from-green-500 to-teal-500 rounded-lg text-white text-center"
+            >
+              Animated Entry
+            </motion.div>
+            <motion.div
+              animate={{
+                rotate: [0, 360],
+                scale: [1, 1.2, 1],
+              }}
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}
+              className="p-6 bg-gradient-to-br from-pink-500 to-red-500 rounded-lg text-white text-center"
+            >
+              Infinite Animation
+            </motion.div>
+          </div>
+        </div>
+
+        {/* UUID Test */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+            UUID Test
+          </h2>
+          <div className="space-y-4">
+            <button
+              onClick={generateUUID}
+              className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
+            >
+              Generate UUID
+            </button>
+            {generatedUUID && (
+              <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Generated UUID:</p>
+                <p className="font-mono text-sm text-gray-900 dark:text-white break-all">{generatedUUID}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Unique Names Generator Test */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+            Unique Names Generator Test
+          </h2>
+          <div className="space-y-4">
+            <button
+              onClick={generateUniqueName}
+              className="bg-purple-500 hover:bg-purple-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
+            >
+              Generate Unique Name
+            </button>
+            {generatedName && (
+              <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Generated Name:</p>
+                <p className="font-semibold text-lg text-gray-900 dark:text-white">{generatedName}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Profanity Filter Test */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+            Profanity Filter Test
+          </h2>
+          <div className="space-y-4">
+            <input
+              type="text"
+              value={profanityText}
+              onChange={(e) => setProfanityText(e.target.value)}
+              placeholder="Enter text to check for profanity..."
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={() => checkProfanity(profanityText)}
+              className="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
+            >
+              Check Profanity
+            </button>
+            {profanityResult && (
+              <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <p className="text-gray-900 dark:text-white">{profanityResult}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* React Hot Toast Test */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+            React Hot Toast Test
+          </h2>
+          <div className="flex flex-wrap gap-4">
+            <button
+              onClick={() => showToast("success")}
+              className="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
+            >
+              Success Toast
+            </button>
+            <button
+              onClick={() => showToast("error")}
+              className="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
+            >
+              Error Toast
+            </button>
+            <button
+              onClick={() => showToast("loading")}
+              className="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
+            >
+              Loading Toast
+            </button>
+            <button
+              onClick={() => showToast("default")}
+              className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
+            >
+              Default Toast
+            </button>
+          </div>
+        </div>
+
+        {/* Radix UI Test */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+            Radix UI Test
+          </h2>
+          <div className="flex flex-wrap gap-4">
+            {/* Tooltip */}
+            <Tooltip.Provider>
+              <Tooltip.Root>
+                <Tooltip.Trigger asChild>
+                  <button className="bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors">
+                    Hover for Tooltip
+                  </button>
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content
+                    className="bg-gray-900 text-white px-3 py-2 rounded-lg text-sm shadow-lg"
+                    sideOffset={5}
+                  >
+                    This is a Radix UI Tooltip!
+                    <Tooltip.Arrow className="fill-gray-900" />
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              </Tooltip.Root>
+            </Tooltip.Provider>
+
+            {/* Popover */}
+            <Popover.Root>
+              <Popover.Trigger asChild>
+                <button className="bg-pink-500 hover:bg-pink-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors">
+                  Open Popover
+                </button>
+              </Popover.Trigger>
+              <Popover.Portal>
+                <Popover.Content
+                  className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white p-4 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600"
+                  sideOffset={5}
+                >
+                  <p className="text-sm mb-2">This is a Radix UI Popover!</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Click outside to close.</p>
+                  <Popover.Arrow className="fill-white dark:fill-gray-700" />
+                </Popover.Content>
+              </Popover.Portal>
+            </Popover.Root>
+
+            {/* Dialog */}
+            <Dialog.Root open={dialogOpen} onOpenChange={setDialogOpen}>
+              <Dialog.Trigger asChild>
+                <button className="bg-teal-500 hover:bg-teal-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors">
+                  Open Dialog
+                </button>
+              </Dialog.Trigger>
+              <Dialog.Portal>
+                <Dialog.Overlay className="fixed inset-0 bg-black/50" />
+                <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-md w-full">
+                  <Dialog.Title className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                    Radix UI Dialog
+                  </Dialog.Title>
+                  <Dialog.Description className="text-gray-600 dark:text-gray-300 mb-4">
+                    This is a Radix UI Dialog component. You can use it for modals, confirmations, and more.
+                  </Dialog.Description>
+                  <Dialog.Close asChild>
+                    <button className="bg-teal-500 hover:bg-teal-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors">
+                      Close
+                    </button>
+                  </Dialog.Close>
+                </Dialog.Content>
+              </Dialog.Portal>
+            </Dialog.Root>
+          </div>
+        </div>
+
+        {/* Vercel Analytics Status */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+            Vercel Analytics Status
+          </h2>
+          <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+            <p className="text-green-800 dark:text-green-200">
+              ✅ <strong>@vercel/analytics</strong> is installed and active!
+            </p>
+            <p className="text-sm text-green-700 dark:text-green-300 mt-2">
+              Analytics component is added to the layout. It will track page views and events when deployed to Vercel.
+            </p>
           </div>
         </div>
 
