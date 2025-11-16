@@ -15,8 +15,8 @@ export function AuthRedirectGuard() {
     const anon = getAnonUserId();
     const signedIn = !!user || !!anon;
 
-    // Only guard specific pages; allow public routes and auth pages
-    const PROTECTED_PREFIXES = ["/discover", "/trending", "/admin", "/my", "/settings"];
+    // Only guard specific pages; allow public routes like /home, /discover, /trending
+    const PROTECTED_PREFIXES = ["/admin", "/my", "/settings"];
     const isProtected = !!pathname && PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
     const isAuthRoute =
       !!pathname &&
