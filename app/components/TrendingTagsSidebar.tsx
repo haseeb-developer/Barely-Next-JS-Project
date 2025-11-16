@@ -122,10 +122,10 @@ export function TrendingTagsSidebar({ onTagClick, selectedTag, compact }: Trendi
                   key={tagItem.tag}
                   whileTap={{ scale: 0.97 }}
                   onClick={() => onTagClick?.(tagItem.tag)}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs whitespace-nowrap cursor-pointer ${
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs whitespace-nowrap cursor-pointer transition-colors ${
                     isSelected
-                      ? "bg-white/10 border-white/30 text-white"
-                      : "bg-[#1a1b23] border-[#2d2f36] text-[#e4e6eb]"
+                      ? "bg-[#1a1b23] border-[#5865f2] text-white"
+                      : "bg-[#1b1e27] border-[#3d3f47] text-[#e4e6eb] hover:bg-[#1f2330]"
                   }`}
                 >
                   <span className={`font-bold bg-clip-text text-transparent bg-gradient-to-r ${tagColor}`}>#</span>
@@ -148,7 +148,7 @@ export function TrendingTagsSidebar({ onTagClick, selectedTag, compact }: Trendi
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: 0.2 }}
-        className="bg-gradient-to-br from-[#2d2f36] to-[#1a1b23] rounded-2xl p-6 xl:p-8 border border-[#3d3f47]/50 shadow-2xl backdrop-blur-sm h-fit max-h-[calc(100vh-9rem)] overflow-auto"
+        className="bg-gradient-to-br from-[#2d2f36] to-[#1a1b23] rounded-2xl p-6 xl:p-8 border border-[#3d3f47]/50 backdrop-blur-sm h-fit max-h-[calc(100vh-9rem)] overflow-auto"
       >
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
@@ -194,17 +194,12 @@ export function TrendingTagsSidebar({ onTagClick, selectedTag, compact }: Trendi
                     stiffness: 200,
                     damping: 20
                   }}
-                  whileHover={{ 
-                    scale: 1.01,
-                    transition: { duration: 0.2 }
-                  }}
+                  whileHover={{ scale: 1.005 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => onTagClick?.(tagItem.tag)}
-                  className={`w-full relative overflow-hidden rounded-xl transition-all duration-200 group cursor-pointer ${
-                    isSelected
-                      ? `bg-gradient-to-r ${tagColor} shadow-lg shadow-[#5865f2]/30`
-                      : "bg-gradient-to-br from-[#1a1b23] to-[#2d2f36] hover:from-[#2d2f36] hover:to-[#3d3f47] border border-[#3d3f47]/30"
-                  } ${isTopThree && !isSelected ? "ring-2 ring-[#5865f2]/20" : ""}`}
+                  className={`w-full rounded-xl border transition-colors text-left ${
+                    isSelected ? "border-[#5865f2] bg-[#1a1b23]/60" : "border-[#3d3f47] bg-[#171a22] hover:bg-[#1b1e27]"
+                  }`}
                 >
                   
                   <div className="relative flex items-center justify-between p-4">
@@ -212,12 +207,8 @@ export function TrendingTagsSidebar({ onTagClick, selectedTag, compact }: Trendi
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       {/* Rank Badge */}
                       <motion.div
-                        className={`flex-shrink-0 w-8 h-8 flex items-center justify-center font-bold text-sm ${
-                          isSelected
-                            ? "bg-white/20 text-white"
-                            : isTopThree
-                            ? `bg-gradient-to-br ${tagColor} text-white shadow-md`
-                            : "bg-[#2d2f36] text-[#b9bbbe] border border-[#3d3f47]"
+                        className={`flex-shrink-0 w-7 h-7 flex items-center justify-center font-bold text-xs rounded-full ${
+                          isTopThree ? `bg-gradient-to-br ${tagColor} text-white` : "bg-[#2d2f36] text-[#b9bbbe] border border-[#3d3f47]"
                         }`}
                         style={{ borderRadius: '100px' }}
                         whileHover={{ rotate: 360, transition: { duration: 0.5 } }}
@@ -225,31 +216,19 @@ export function TrendingTagsSidebar({ onTagClick, selectedTag, compact }: Trendi
                         {index + 1}
                       </motion.div>
                       
-                      {/* Tag Name with Hash and Border */}
-                      <div className="relative inline-block">
-                        {/* Outer gradient border */}
-                        {!isSelected && (
-                          <div className={`absolute -inset-[2px] bg-gradient-to-r ${tagColor} opacity-80`} style={{ borderRadius: '100px' }}></div>
-                        )}
-                        {/* Inner content with background */}
-                        <div className={`relative flex items-center gap-1.5 px-3 py-1.5 ${
-                          isSelected
-                            ? "bg-white/10 border-2 border-white/30"
-                            : "bg-[#1a1b23]"
-                        }`}
-                        style={{ borderRadius: '100px' }}>
-                          <span className={`text-base font-bold ${
-                            isSelected 
-                              ? "text-white" 
-                              : `text-transparent bg-gradient-to-r ${tagColor} bg-clip-text`
-                          }`}>
+                      {/* Tag chip */}
+                      <div className="relative inline-flex items-center gap-1.5">
+                        <div
+                          className={`px-3 py-1.5 rounded-full border-2 ${
+                            isSelected
+                              ? `bg-gradient-to-r ${tagColor} border-transparent text-white`
+                              : "bg-[#1b1e27] border-[#3d3f47]"
+                          }`}
+                        >
+                          <span className={`text-base font-bold ${isSelected ? "text-white" : `text-transparent bg-gradient-to-r ${tagColor} bg-clip-text`}`}>
                             #
                           </span>
-                          <span className={`font-semibold truncate text-base ${
-                            isSelected 
-                              ? "text-white" 
-                              : `text-transparent bg-gradient-to-r ${tagColor} bg-clip-text`
-                          }`}>
+                          <span className={`font-semibold truncate text-base ${isSelected ? "text-white" : "text-[#e4e6eb]"}`}>
                             {capitalizeTag(tagItem.tag)}
                           </span>
                         </div>
@@ -258,11 +237,7 @@ export function TrendingTagsSidebar({ onTagClick, selectedTag, compact }: Trendi
                     
                     {/* Right side: Count (perfect circle) */}
                     <div
-                      className={`flex-shrink-0 ml-3 w-9 h-9 flex items-center justify-center font-bold text-base ${
-                        isSelected
-                          ? "bg-white/20 text-white"
-                          : `bg-gradient-to-r ${tagColor} text-white shadow-sm`
-                      } rounded-full`}
+                      className={`flex-shrink-0 ml-3 w-9 h-9 flex items-center justify-center font-bold text-base rounded-full text-white bg-gradient-to-r ${tagColor}`}
                     >
                       {tagItem.count}
                     </div>

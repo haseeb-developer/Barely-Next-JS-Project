@@ -124,6 +124,9 @@ export function Header({ pacificoClassName }: HeaderProps) {
     setIsMobileMenuOpen(false);
   };
 
+  const adminEmail = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || null;
+  const isAdmin = adminEmail ? adminEmail.toLowerCase() === "haseeb.devv@gmail.com" : false;
+
   // Get user's display name
   const getUserDisplayName = () => {
     if (!user) return "User";
@@ -139,6 +142,15 @@ export function Header({ pacificoClassName }: HeaderProps) {
     if (userButton) {
       userButton.click();
     }
+  };
+
+  const [showTokensDropdown, setShowTokensDropdown] = useState(false);
+  const formatCompact = (n: number) => {
+    if (n < 1000) return `${n}`;
+    if (n < 10000) return `${(n / 1000).toFixed(2)}k`.replace(/\.0+$/, "");
+    if (n < 100000) return `${(n / 1000).toFixed(2)}k`.replace(/\.0+$/, "");
+    if (n < 1000000) return `${(n / 1000).toFixed(1)}k`.replace(/\.0+$/, "");
+    return `${(n / 1000000).toFixed(2)}M`.replace(/\.0+$/, "");
   };
 
   return (
@@ -193,10 +205,31 @@ export function Header({ pacificoClassName }: HeaderProps) {
 
             {/* Desktop Auth buttons on the right - Hidden on mobile */}
             <div className="hidden sm:flex items-center gap-3 sm:gap-4 flex-shrink-0 ml-auto">
+              {/* Admin Panel link */}
+              {isAdmin && (
+                <a
+                  href="/admin"
+                  className="px-3 py-1.5 rounded-lg bg-[#1a1b23] border border-[#2d2f36] text-[#e4e6eb] hover:bg-[#2d2f36] cursor-pointer"
+                >
+                  Admin Panel
+                </a>
+              )}
               {/* Tokens pill */}
-              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-[#2d2f36] border border-[#3d3f47]">
-                <Image src="/token.svg" alt="Tokens" width={18} height={18} />
-                <span className="text-sm font-semibold text-[#facc15]">{tokens}</span>
+              <div className="relative">
+                <button
+                  onClick={() => setShowTokensDropdown((v) => !v)}
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-[#2d2f36] border border-[#3d3f47] cursor-pointer"
+                  title="Tokens"
+                >
+                  <Image src="/token.svg" alt="Tokens" width={18} height={18} />
+                  <span className="text-sm font-semibold text-[#facc15]">{formatCompact(tokens)}</span>
+                </button>
+                {showTokensDropdown && (
+                  <div className="absolute right-0 mt-2 w-40 rounded-lg bg-[#1f2330] border border-[#2d2f36] p-2 text-center z-50">
+                    <div className="text-xs text-[#9aa0a6]">Exact balance</div>
+                    <div className="text-lg font-semibold text-[#facc15]">{tokens.toLocaleString()}</div>
+                  </div>
+                )}
               </div>
               <SignedOut>
                 {!anonUserId ? (

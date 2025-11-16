@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ThumbsUp, ThumbsDown, Trash2, User, Hash, AlertTriangle, Flag } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Trash2, User, Hash, AlertTriangle, Flag, MessageSquare } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
-import { getAnonUserId } from "@/app/lib/anon-auth";
+import { getAnonUserId, getAnonUsername } from "@/app/lib/anon-auth";
 import toast from "react-hot-toast";
 import Image from "next/image";
 import { ClerkProfileImage } from "./ClerkProfileImage";
 import { isAdminEmail } from "@/app/lib/admin";
+import { ReactionsBar } from "./ReactionsBar";
+import { EmojiPickerPopover } from "./EmojiPickerPopover";
 
 interface Post {
   id: string;
@@ -44,8 +46,31 @@ export function PostCard({ post, onDelete }: PostCardProps) {
   const [showResetFlags, setShowResetFlags] = useState(false);
   const [isResettingFlags, setIsResettingFlags] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [comments, setComments] = useState<Array<{id:string; content:string; username:string; created_at:string; likes_count:number; liked:boolean; profile_picture?: string | null; user_id?: string; user_type?: "clerk" | "anonymous"}>>([]);
+  const [newComment, setNewComment] = useState("");
+  const [isPostingComment, setIsPostingComment] = useState(false);
+  const [commentCount, setCommentCount] = useState(0);
+  const [confirmCommentId, setConfirmCommentId] = useState<string | null>(null);
+  const [isDeletingComment, setIsDeletingComment] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [isLoadingComments, setIsLoadingComments] = useState(false);
+  const [postReactionsTotals, setPostReactionsTotals] = useState<Record<string, number>>({});
+  const [postUserReactions, setPostUserReactions] = useState<string[]>([]);
+  const [showPostEmojiPicker, setShowPostEmojiPicker] = useState(false);
+
+  // helper to safely read JSON (avoids Unexpected token '<' on HTML error pages)
+  const readJsonSafe = async (res: Response) => {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { error: text };
+    }
+  };
   const { user } = useUser();
   const anonUserId = getAnonUserId();
+  const anonUsername = getAnonUsername();
 
   // Listen for profile picture updates
   useEffect(() => {
@@ -80,25 +105,17 @@ export function PostCard({ post, onDelete }: PostCardProps) {
       if (!currentUserId) return;
 
       try {
-        // Check reaction
-        const url = new URL(`/api/posts/${post.id}/user-reaction`, window.location.origin);
-        if (anonUserId) {
-          url.searchParams.set("anonUserId", anonUserId);
-        }
-
-        const response = await fetch(url);
+        // Check reaction (relative URL avoids window.origin issues)
+        const reactionPath = `/api/posts/${post.id}/user-reaction${anonUserId ? `?anonUserId=${encodeURIComponent(anonUserId)}` : ""}`;
+        const response = await fetch(reactionPath);
         const data = await response.json();
 
         setIsLiked(data.liked || false);
         setIsDisliked(data.disliked || false);
 
         // Check flag status
-        const flagUrl = new URL(`/api/posts/${post.id}/flag`, window.location.origin);
-        if (anonUserId) {
-          flagUrl.searchParams.set("anonUserId", anonUserId);
-        }
-
-        const flagResponse = await fetch(flagUrl);
+        const flagPath = `/api/posts/${post.id}/flag${anonUserId ? `?anonUserId=${encodeURIComponent(anonUserId)}` : ""}`;
+        const flagResponse = await fetch(flagPath);
         const flagData = await flagResponse.json();
 
         setIsFlagged(flagData.hasFlagged || false);
@@ -110,6 +127,128 @@ export function PostCard({ post, onDelete }: PostCardProps) {
 
     checkReaction();
   }, [post.id, currentUserId, anonUserId]);
+
+  const loadComments = async () => {
+    try {
+      setIsLoadingComments(true);
+      const res = await fetch(`/api/posts/${post.id}/comments${anonUserId ? `?anonUserId=${encodeURIComponent(anonUserId)}` : ""}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load comments");
+      const newComments = (data.comments || []).map((c: any) => ({
+        id: c.id,
+        content: c.content,
+        username: c.username,
+        created_at: c.created_at,
+        likes_count: c.likes_count || 0,
+        liked: !!c.liked,
+        profile_picture: c.profile_picture || null,
+        user_id: c.user_id,
+        user_type: c.user_type,
+      }));
+      setComments(newComments);
+      setCommentCount(typeof data.totalCount === "number" ? data.totalCount : newComments.length);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoadingComments(false);
+    }
+  };
+
+  // Reactions - posts
+  const loadPostReactions = async () => {
+    try {
+      const res = await fetch(`/api/posts/${post.id}/reactions${anonUserId ? `?anonUserId=${encodeURIComponent(anonUserId)}` : ""}`);
+      const data = await readJsonSafe(res);
+      if (res.ok) {
+        setPostReactionsTotals(data.totals || {});
+        setPostUserReactions(data.userReactions || []);
+      } else if (data?.error) {
+        console.error("loadPostReactions error:", data.error);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const togglePostReaction = async (emoji: string) => {
+    const already = postUserReactions.includes(emoji);
+    // limit max 2 distinct reactions per user
+    if (!already && postUserReactions.length >= 2) {
+      toast.error("You can add up to 2 reactions per post");
+      return;
+    }
+
+    // optimistic update for instant feedback
+    const prevTotals = { ...postReactionsTotals };
+    const prevUser = [...postUserReactions];
+    if (already) {
+      setPostUserReactions((u) => u.filter((e) => e !== emoji));
+      setPostReactionsTotals((t) => {
+        const c = t[emoji] || 0;
+        const next = Math.max(0, c - 1);
+        const nt = { ...t, [emoji]: next };
+        if (next === 0) delete nt[emoji];
+        return nt;
+      });
+    } else {
+      setPostUserReactions((u) => [...u, emoji]);
+      setPostReactionsTotals((t) => ({ ...t, [emoji]: (t[emoji] || 0) + 1 }));
+    }
+    // track request version to drop stale responses
+    const reqVersion = ++togglePostReactionReq.current;
+    try {
+      const res = await fetch(`/api/posts/${post.id}/reactions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emoji, anonUserId: anonUserId || null }),
+      });
+      const data = await readJsonSafe(res);
+      if (!res.ok) throw new Error(data.error || "Failed to react");
+      // ignore stale/older responses
+      if (reqVersion === togglePostReactionReq.current) {
+        setPostReactionsTotals(data.totals || {});
+        setPostUserReactions(data.userReactions || []);
+      }
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e.message || "Failed to react");
+      // revert optimistic change
+      setPostReactionsTotals(prevTotals);
+      setPostUserReactions(prevUser);
+    }
+  };
+
+  useEffect(() => {
+    loadPostReactions();
+  }, [post.id, anonUserId, user?.id]);
+
+  // ref for dropping stale toggle responses
+  const togglePostReactionReq = useRef(0);
+  useEffect(() => {
+    if (showComments) loadComments();
+  }, [showComments]);
+
+  useEffect(() => {
+    const mql = window.matchMedia("(min-width: 1024px)");
+    const handler = (e: MediaQueryListEvent | MediaQueryList) => setIsDesktop(!!(e as any).matches);
+    handler(mql);
+    const listener = (e: MediaQueryListEvent) => handler(e);
+    mql.addEventListener ? mql.addEventListener("change", listener) : mql.addListener(listener);
+    return () => {
+      mql.removeEventListener ? mql.removeEventListener("change", listener) : mql.removeListener(listener);
+    };
+  }, []);
+
+  // Load initial comments count (summary)
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/posts/${post.id}/comments?summary=1`);
+        const data = await res.json();
+        if (res.ok) setCommentCount(data.count || 0);
+      } catch {}
+    })();
+  }, [post.id]);
 
   const handleLike = async () => {
     if (!currentUserId) {
@@ -336,6 +475,56 @@ export function PostCard({ post, onDelete }: PostCardProps) {
     return "Just now";
   };
 
+  const submitComment = async () => {
+    if (!currentUserId) {
+      toast.error("Please sign in to comment");
+      return;
+    }
+    const val = newComment.trim();
+    if (!val) return;
+    setIsPostingComment(true);
+    try {
+      const res = await fetch(`/api/posts/${post.id}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: val,
+          anonUserId: anonUserId || null,
+          anonUsername: anonUsername || null,
+          clerkUsername: user?.username || user?.firstName || user?.primaryEmailAddress?.emailAddress?.split("@")[0] || "User",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to post comment");
+      setNewComment("");
+      await loadComments();
+      // update count from summary
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e.message || "Failed to post comment");
+    } finally {
+      setIsPostingComment(false);
+    }
+  };
+
+  const toggleLikeComment = async (commentId: string) => {
+    try {
+      const res = await fetch(`/api/comments/${commentId}/like`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ anonUserId: anonUserId || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to like comment");
+      setComments(prev =>
+        prev.map(c => (c.id === commentId ? { ...c, likes_count: data.likes_count, liked: data.liked } : c))
+      );
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e.message || "Failed to like comment");
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -479,8 +668,392 @@ export function PostCard({ post, onDelete }: PostCardProps) {
           <Flag className={`w-4 h-4 ${isFlagged ? "fill-current" : ""}`} />
           <span className="text-sm font-medium">{flagsCount}</span>
         </motion.button>
+
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setShowComments(s => !s)}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#1a1b23] text-[#b9bbbe] hover:bg-[#3d3f47] transition-colors cursor-pointer"
+        >
+          <MessageSquare className="w-4 h-4" />
+          <span className="text-sm font-medium">{commentCount}</span>
+        </motion.button>
+        {/* Emoji picker trigger */}
+        <div className="relative">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setShowPostEmojiPicker((v) => !v)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#1a1b23] text-[#b9bbbe] hover:bg-[#3d3f47] transition-colors cursor-pointer"
+          >
+            <span className="text-base">😊</span>
+            <span className="text-sm font-medium">Emojis</span>
+          </motion.button>
+          <EmojiPickerPopover
+            isOpen={showPostEmojiPicker}
+            onClose={() => setShowPostEmojiPicker(false)}
+            onSelect={(e) => {
+              setShowPostEmojiPicker(false);
+              togglePostReaction(e);
+            }}
+          />
+        </div>
       </div>
 
+      {/* Post Reactions */}
+      <ReactionsBar
+        totals={postReactionsTotals}
+        userReactions={postUserReactions}
+        onToggle={togglePostReaction}
+        showAdd={false}
+      />
+
+      {/* Inline comments for mobile/tablet, right drawer for desktop */}
+      {showComments && !isDesktop && (
+        <div className="mt-4 border-t border-[#3d3f47] pt-4">
+          <div className="flex items-start gap-2">
+            <textarea
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              placeholder="Write a comment..."
+              rows={2}
+              className="flex-1 px-3 py-2 bg-[#1a1b23] border border-[#3d3f47] rounded-lg text-[#e4e6eb] placeholder-[#9aa0a6] focus:outline-none focus:ring-2 focus:ring-[#5865f2]"
+            />
+            <motion.button
+              whileHover={{ scale: isPostingComment ? 1 : 1.03 }}
+              whileTap={{ scale: isPostingComment ? 1 : 0.97 }}
+              onClick={submitComment}
+              disabled={isPostingComment || !newComment.trim()}
+              className="px-4 py-2 bg-[#5865f2] hover:bg-[#4752c4] text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {isPostingComment ? "Posting..." : "Comment"}
+            </motion.button>
+          </div>
+
+          <div className="mt-3 space-y-3">
+            {comments.map((c, idx) => (
+              <div
+                key={c.id}
+                className="p-3 rounded-xl bg-[#171a22] border border-[#2d2f36] hover:border-[#3b3f4a] transition-colors"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-[#5865f2] bg-[#1a1b23] flex-shrink-0">
+                      {c.profile_picture ? (
+                        // Use img to support both data URLs and remote URLs reliably
+                        <img
+                          src={c.profile_picture}
+                          alt={c.username}
+                          width={32}
+                          height={32}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-[#5865f2] to-[#4752c4] flex items-center justify-center">
+                          <User className="w-4 h-4 text-white" />
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-sm font-semibold text-[#e4e6eb] truncate">
+                      By {c.username}{" "}
+                      <span className="text-xs font-normal text-[#9aa0a6]">({formatDate(c.created_at)})</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => toggleLikeComment(c.id)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer ${
+                        c.liked
+                          ? "bg-pink-600/25 text-pink-300 border border-pink-500/40"
+                          : "bg-[#1a1b23] text-[#b9bbbe] border border-[#2d2f36] hover:bg-[#2d2f36]"
+                      }`}
+                    >
+                      <span>❤</span>
+                      <span>{c.likes_count}</span>
+                    </motion.button>
+                    {(() => {
+                      const isOwner =
+                        (c.user_type === "clerk" && user?.id === c.user_id) ||
+                        (c.user_type === "anonymous" && anonUserId === c.user_id);
+                      const canDelete = isOwner || isAdmin;
+                      if (!canDelete) return null;
+                      return (
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={async () => {
+                          if (isAdmin && !isOwner) {
+                            setConfirmCommentId(c.id);
+                            return;
+                          }
+                          // direct delete for owner
+                          try {
+                            const res = await fetch(`/api/comments/${c.id}`, {
+                              method: "DELETE",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ anonUserId: anonUserId || null }),
+                            });
+                            const data = await res.json();
+                            if (!res.ok) throw new Error(data.error || "Failed to delete comment");
+                            setComments(prev => prev.filter(cm => cm.id !== c.id));
+                            setCommentCount(cnt => Math.max(0, cnt - 1));
+                            toast.success("Comment deleted");
+                          } catch (e: any) {
+                            console.error(e);
+                            toast.error(e.message || "Failed to delete comment");
+                          }
+                        }}
+                        className="px-2 py-1 rounded-md text-xs bg-red-500/20 text-red-400 border border-red-500/30 cursor-pointer"
+                        title="Delete comment"
+                      >
+                        Delete
+                      </motion.button>
+                      );
+                    })()}
+                  </div>
+                </div>
+                <p className="text-[#cfd2d6] text-sm mt-2">{c.content}</p>
+                {/* Comment reactions */}
+                <CommentReactions commentId={c.id} anonUserId={anonUserId || null} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Desktop right drawer */}
+      <AnimatePresence>
+        {showComments && isDesktop && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowComments(false)}
+              className="fixed inset-0 bg-black/40 z-40"
+            />
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="fixed top-0 right-0 bottom-0 w-[420px] bg-[#1a1b23] z-50 border-l border-[#2d2f36] shadow-2xl flex flex-col"
+            >
+              <div className="p-4 border-b border-[#2d2f36] flex items-center justify-between">
+                <span className="text-[#e4e6eb] font-semibold">Comments</span>
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setShowComments(false)}
+                  className="px-2 py-1 rounded-md bg-[#2d2f36] text-[#b9bbbe] cursor-pointer"
+                >
+                  Close
+                </motion.button>
+              </div>
+              <div className="p-4 overflow-y-auto flex-1">
+                <div className="flex items-start gap-2 mb-3">
+                  <textarea
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    placeholder="Write a comment..."
+                    rows={2}
+                    className="flex-1 px-3 py-2 bg-[#1a1b23] border border-[#3d3f47] rounded-lg text-[#e4e6eb] placeholder-[#9aa0a6] focus:outline-none focus:ring-2 focus:ring-[#5865f2] resize-y max-h-32 min-h-[40px]"
+                  />
+                  <motion.button
+                    whileHover={{ scale: isPostingComment ? 1 : 1.03 }}
+                    whileTap={{ scale: isPostingComment ? 1 : 0.97 }}
+                    onClick={submitComment}
+                    disabled={isPostingComment || !newComment.trim()}
+                    className="px-4 py-2 bg-[#5865f2] hover:bg-[#4752c4] text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {isPostingComment ? "Posting..." : "Comment"}
+                  </motion.button>
+                </div>
+
+                {isLoadingComments ? (
+                  <div className="flex items-center justify-center py-10">
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      className="w-10 h-10 border-4 border-[#5865f2] border-t-transparent rounded-full"
+                    />
+                    <span className="ml-3 text-[#b9bbbe]">Loading comments...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                  {comments.map((c) => (
+                    <div
+                      key={c.id}
+                      className="p-3 rounded-xl bg-[#171a22] border border-[#2d2f36] hover:border-[#3b3f4a] transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-[#5865f2] bg-[#1a1b23] flex-shrink-0">
+                            {c.profile_picture ? (
+                              <img src={c.profile_picture} alt={c.username} width={32} height={32} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full bg-gradient-to-br from-[#5865f2] to-[#4752c4] flex items-center justify-center">
+                                <User className="w-4 h-4 text-white" />
+                              </div>
+                            )}
+                          </div>
+                          <span className="text-sm font-semibold text-[#e4e6eb] truncate">
+                            By {c.username} <span className="text-xs font-normal text-[#9aa0a6]">({formatDate(c.created_at)})</span>
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => toggleLikeComment(c.id)}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer ${
+                              c.liked ? "bg-pink-600/25 text-pink-300 border border-pink-500/40" : "bg-[#1a1b23] text-[#b9bbbe] border border-[#2d2f36] hover:bg-[#2d2f36]"
+                            }`}
+                          >
+                            <span>❤</span>
+                            <span>{c.likes_count}</span>
+                          </motion.button>
+                          {(() => {
+                            const isOwner =
+                              (c.user_type === "clerk" && user?.id === c.user_id) || (c.user_type === "anonymous" && anonUserId === c.user_id);
+                            const canDelete = isOwner || isAdmin;
+                            if (!canDelete) return null;
+                            return (
+                              <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={async () => {
+                                  if (isAdmin && !isOwner) {
+                                    setConfirmCommentId(c.id);
+                                    return;
+                                  }
+                                  try {
+                                    const res = await fetch(`/api/comments/${c.id}`, {
+                                      method: "DELETE",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ anonUserId: anonUserId || null }),
+                                    });
+                                    const data = await res.json();
+                                    if (!res.ok) throw new Error(data.error || "Failed to delete comment");
+                                    setComments(prev => prev.filter(cm => cm.id !== c.id));
+                                    setCommentCount(cnt => Math.max(0, cnt - 1));
+                                    toast.success("Comment deleted");
+                                  } catch (e: any) {
+                                    console.error(e);
+                                    toast.error(e.message || "Failed to delete comment");
+                                  }
+                                }}
+                                className="px-2 py-1 rounded-md text-xs bg-red-500/20 text-red-400 border border-red-500/30 cursor-pointer"
+                              >
+                                Delete
+                              </motion.button>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                      <p className="text-[#cfd2d6] text-sm mt-2">{c.content}</p>
+                      {/* Comment reactions in drawer */}
+                      <CommentReactions commentId={c.id} anonUserId={anonUserId || null} />
+                    </div>
+                  ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+      {/* Admin: Confirm delete comment modal */}
+      <AnimatePresence>
+        {confirmCommentId && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setConfirmCommentId(null)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#2d2f36] rounded-2xl shadow-2xl max-w-md w-full mx-4 z-50 border border-[#3d3f47]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6">
+                <div className="flex items-center gap-4 mb-4">
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", delay: 0.1 }}
+                    className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0"
+                  >
+                    <AlertTriangle className="w-6 h-6 text-red-400" />
+                  </motion.div>
+                  <div>
+                    <h3 className="text-xl font-semibold text-[#e4e6eb]">Delete Comment</h3>
+                    <p className="text-sm text-[#b9bbbe] mt-1">
+                      Are you sure you want to delete this comment?
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setConfirmCommentId(null)}
+                    className="flex-1 px-4 py-3 bg-[#1a1b23] hover:bg-[#3d3f47] text-[#e4e6eb] font-medium rounded-lg transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={async () => {
+                      if (!confirmCommentId) return;
+                      setIsDeletingComment(true);
+                      try {
+                        const res = await fetch(`/api/comments/${confirmCommentId}`, {
+                          method: "DELETE",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ anonUserId: anonUserId || null }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || "Failed to delete comment");
+                        setComments(prev => prev.filter(cm => cm.id !== confirmCommentId));
+                        setCommentCount(cnt => Math.max(0, cnt - 1));
+                        setConfirmCommentId(null);
+                        toast.success("Comment deleted");
+                      } catch (e: any) {
+                        console.error(e);
+                        toast.error(e.message || "Failed to delete comment");
+                      } finally {
+                        setIsDeletingComment(false);
+                      }
+                    }}
+                    disabled={isDeletingComment}
+                    className="flex-1 px-4 py-3 bg-red-500 hover:bg-red-600 text-white font-medium rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isDeletingComment ? (
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                        className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
+                      />
+                    ) : (
+                      "Delete Comment"
+                    )}
+                  </motion.button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
       {/* Custom Delete Confirmation Modal */}
       <AnimatePresence>
         {showDeleteConfirm && (
@@ -642,5 +1215,84 @@ export function PostCard({ post, onDelete }: PostCardProps) {
       </AnimatePresence>
     </motion.div>
   );
+}
+
+// --- Small client sub-component for comment reactions ---
+function CommentReactions({ commentId, anonUserId }: { commentId: string; anonUserId: string | null }) {
+  "use client";
+  const [totals, setTotals] = useState<Record<string, number>>({});
+  const [userReactions, setUserReactions] = useState<string[]>([]);
+  const { user } = useUser();
+  const toggleReqRef = useRef(0);
+
+  const load = async () => {
+    try {
+      const res = await fetch(`/api/comments/${commentId}/reactions${anonUserId ? `?anonUserId=${encodeURIComponent(anonUserId)}` : ""}`);
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch { data = { error: text }; }
+      if (res.ok) {
+        setTotals(data.totals || {});
+        setUserReactions(data.userReactions || []);
+      } else if (data?.error) {
+        console.error("load comment reactions error:", data.error);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, [commentId, anonUserId, user?.id]);
+
+  const toggle = async (emoji: string) => {
+    const has = userReactions.includes(emoji);
+    if (!has && userReactions.length >= 2) {
+      toast.error("You can add up to 2 reactions per comment");
+      return;
+    }
+
+    // optimistic update
+    const prevTotals = { ...totals };
+    const prevUser = [...userReactions];
+    if (has) {
+      setUserReactions((u) => u.filter((e) => e !== emoji));
+      setTotals((t) => {
+        const c = t[emoji] || 0;
+        const next = Math.max(0, c - 1);
+        const nt = { ...t, [emoji]: next };
+        if (next === 0) delete nt[emoji];
+        return nt;
+      });
+    } else {
+      setUserReactions((u) => [...u, emoji]);
+      setTotals((t) => ({ ...t, [emoji]: (t[emoji] || 0) + 1 }));
+    }
+    try {
+      const reqId = ++toggleReqRef.current;
+      const res = await fetch(`/api/comments/${commentId}/reactions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emoji, anonUserId }),
+      });
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch { data = { error: text }; }
+      if (!res.ok) throw new Error(data.error || "Failed to react");
+      if (reqId === toggleReqRef.current) {
+        setTotals(data.totals || {});
+        setUserReactions(data.userReactions || []);
+      }
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e.message || "Failed to react");
+      // revert optimistic
+      setTotals(prevTotals);
+      setUserReactions(prevUser);
+    }
+  };
+
+  return <ReactionsBar totals={totals} userReactions={userReactions} onToggle={toggle} small />;
 }
 

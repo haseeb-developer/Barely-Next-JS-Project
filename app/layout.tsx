@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter, Poppins, Pacifico } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Providers } from "./providers";
-import { Header } from "./components/Header";
-import { Footer } from "./components/Footer";
+import { AppFrame } from "./components/AppFrame";
 import { IPBanChecker } from "./components/IPBanChecker";
+import { SuspensionGuard } from "./components/SuspensionGuard";
 import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 
@@ -53,13 +53,10 @@ export default function RootLayout({
           suppressHydrationWarning
         >
           <IPBanChecker />
-          <Header pacificoClassName={pacifico.className} />
+          <SuspensionGuard />
           <Providers>
-            <main className="flex-1">
-            {children}
-            </main>
+            <AppFrame>{children}</AppFrame>
           </Providers>
-          <Footer />
           <Analytics />
         </body>
       </html>
