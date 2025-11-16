@@ -12,9 +12,10 @@ interface TrendingTag {
 interface TrendingTagsSidebarProps {
   onTagClick?: (tag: string) => void;
   selectedTag?: string | null;
+  compact?: boolean; // mobile row variant
 }
 
-export function TrendingTagsSidebar({ onTagClick, selectedTag }: TrendingTagsSidebarProps) {
+export function TrendingTagsSidebar({ onTagClick, selectedTag, compact }: TrendingTagsSidebarProps) {
   const [tags, setTags] = useState<TrendingTag[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -91,13 +92,63 @@ export function TrendingTagsSidebar({ onTagClick, selectedTag }: TrendingTagsSid
     return colors[hash % colors.length];
   };
 
+  // Compact chip-style row for mobile
+  if (compact) {
+    return (
+      <div className="w-full">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-[#5865f2]" />
+            <span className="text-sm font-semibold text-[#e4e6eb]">Trending Tags</span>
+          </div>
+        </div>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-3">
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+              className="w-5 h-5 border-2 border-[#5865f2] border-t-transparent rounded-full"
+            />
+          </div>
+        ) : tags.length === 0 ? (
+          <p className="text-[#b9bbbe] text-xs py-2">No trending tags yet.</p>
+        ) : (
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {tags.map((tagItem, index) => {
+              const isSelected = selectedTag?.toLowerCase() === tagItem.tag.toLowerCase();
+              const tagColor = getTagColor(tagItem.tag, index);
+              return (
+                <motion.button
+                  key={tagItem.tag}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => onTagClick?.(tagItem.tag)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs whitespace-nowrap cursor-pointer ${
+                    isSelected
+                      ? "bg-white/10 border-white/30 text-white"
+                      : "bg-[#1a1b23] border-[#2d2f36] text-[#e4e6eb]"
+                  }`}
+                >
+                  <span className={`font-bold bg-clip-text text-transparent bg-gradient-to-r ${tagColor}`}>#</span>
+                  <span className="font-medium">{capitalizeTag(tagItem.tag)}</span>
+                  <span className={`ml-1 inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] text-white bg-gradient-to-r ${tagColor}`}>
+                    {tagItem.count}
+                  </span>
+                </motion.button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <aside className="w-full lg:w-96 xl:w-[420px] lg:flex-shrink-0">
+    <aside className="w-full lg:w-96 xl:w-[420px] lg:flex-shrink-0 lg:sticky lg:top-24 lg:self-start">
       <motion.div
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: 0.2 }}
-        className="bg-gradient-to-br from-[#2d2f36] to-[#1a1b23] rounded-2xl p-6 xl:p-8 border border-[#3d3f47]/50 shadow-2xl sticky top-8 backdrop-blur-sm"
+        className="bg-gradient-to-br from-[#2d2f36] to-[#1a1b23] rounded-2xl p-6 xl:p-8 border border-[#3d3f47]/50 shadow-2xl backdrop-blur-sm h-fit max-h-[calc(100vh-9rem)] overflow-auto"
       >
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">

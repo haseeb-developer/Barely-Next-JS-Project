@@ -125,11 +125,11 @@ export default function DiscoverPage() {
             className="flex items-center justify-between mb-6"
           >
             <div>
-              <h1 className="text-3xl font-bold text-[#e4e6eb] mb-2 flex items-center gap-2">
-                <Sparkles className="w-8 h-8 text-[#5865f2]" />
+              <h1 className="text-2xl sm:text-3xl font-bold text-[#e4e6eb] mb-2 flex items-center gap-2">
+                <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-[#5865f2]" />
                 Discover Confessions
               </h1>
-              <p className="text-[#b9bbbe]">
+              <p className="text-sm sm:text-base text-[#b9bbbe]">
                 {selectedTag 
                   ? `Showing posts tagged with "${selectedTag}"` 
                   : "Share your thoughts and discover others"}
@@ -173,11 +173,20 @@ export default function DiscoverPage() {
           </motion.div>
         </div>
 
+        {/* Mobile Trending Row (compact) */}
+        <div className="mb-6 lg:hidden">
+          <TrendingTagsSidebar
+            onTagClick={handleTagClick}
+            selectedTag={selectedTag}
+            compact
+          />
+        </div>
+
         {/* Main Content: Flex layout with sidebar and posts */}
         <div className="flex flex-col lg:flex-row gap-6">
-          {/* Trending Tags Sidebar - First on mobile, last on desktop */}
-          <div className="order-2 lg:order-1">
-            <TrendingTagsSidebar 
+          {/* Trending Tags Sidebar - desktop only */}
+          <div className="hidden lg:block lg:order-1">
+            <TrendingTagsSidebar
               onTagClick={handleTagClick}
               selectedTag={selectedTag}
             />

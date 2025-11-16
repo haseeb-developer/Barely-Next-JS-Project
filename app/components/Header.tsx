@@ -40,6 +40,8 @@ export function Header({ pacificoClassName }: HeaderProps) {
   const [tokens, setTokens] = useState<number>(0);
 
   useEffect(() => {
+    // Auto-close mobile menu on route changes
+    setIsMobileMenuOpen(false);
     // Check for anon user on mount and when pathname changes
     const userId = getAnonUserId();
     const email = getAnonUserEmail();
@@ -433,6 +435,30 @@ export function Header({ pacificoClassName }: HeaderProps) {
                 className="flex flex-col flex-1 overflow-y-auto"
               >
                 <div className="flex flex-col p-4 gap-4">
+                  {/* Tokens pill (mobile) */}
+                  <motion.div
+                    variants={{
+                      open: {
+                        x: 0,
+                        opacity: 1,
+                        transition: {
+                          type: "spring",
+                          damping: 20,
+                          stiffness: 300,
+                        },
+                      },
+                      closed: {
+                        x: 30,
+                        opacity: 0,
+                        transition: { duration: 0.2 },
+                      },
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 rounded-full bg-[#2d2f36] border border-[#3d3f47] w-max"
+                  >
+                    <Image src="/token.svg" alt="Tokens" width={18} height={18} />
+                    <span className="text-sm font-semibold text-[#facc15]">{tokens}</span>
+                  </motion.div>
+
                   {/* Navigation Links */}
                   <div className="flex flex-col gap-2">
                     {navLinks.map((link) => (

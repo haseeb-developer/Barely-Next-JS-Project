@@ -252,8 +252,8 @@ export default function SettingsPage() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <h1 className="text-3xl font-bold text-[#e4e6eb] mb-2 flex items-center gap-2">
-            <User className="w-8 h-8 text-[#5865f2]" />
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#e4e6eb] mb-2 flex items-center gap-2">
+            <User className="w-6 h-6 sm:w-8 sm:h-8 text-[#5865f2]" />
             Settings {clerkUser ? "(Clerk)" : "(Anonymous)"}
           </h1>
           <p className="text-[#b9bbbe]">
@@ -271,7 +271,7 @@ export default function SettingsPage() {
             transition={{ delay: 0.1 }}
             className="bg-gradient-to-br from-[#2d2f36] to-[#1a1b23] rounded-2xl p-6 xl:p-8 border border-[#3d3f47]/50 shadow-2xl mb-8"
           >
-            <h2 className="text-xl font-semibold text-[#e4e6eb] mb-4">
+            <h2 className="text-lg sm:text-xl font-semibold text-[#e4e6eb] mb-4">
               Profile Picture
             </h2>
             <p className="text-[#b9bbbe] mb-4">
@@ -311,7 +311,7 @@ export default function SettingsPage() {
           <>
           {/* Profile Picture Section */}
           <div className="mb-8">
-            <h2 className="text-xl font-semibold text-[#e4e6eb] mb-4">
+            <h2 className="text-lg sm:text-xl font-semibold text-[#e4e6eb] mb-4">
               Profile Picture
             </h2>
             
@@ -453,7 +453,7 @@ export default function SettingsPage() {
 
           {/* User Info Section */}
           <div className="pt-6 border-t border-[#3d3f47]">
-            <h2 className="text-xl font-semibold text-[#e4e6eb] mb-4">
+            <h2 className="text-lg sm:text-xl font-semibold text-[#e4e6eb] mb-4">
               Account Information
             </h2>
             
