@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { TrendingUp } from "lucide-react";
+import { useUser } from "@clerk/nextjs";
+import { isAdminEmail } from "@/app/lib/admin";
 
 interface TrendingTag {
   tag: string;
@@ -18,6 +20,9 @@ interface TrendingTagsSidebarProps {
 export function TrendingTagsSidebar({ onTagClick, selectedTag, compact }: TrendingTagsSidebarProps) {
   const [tags, setTags] = useState<TrendingTag[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { user } = useUser();
+  const adminEmail = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || undefined;
+  const isAdmin = isAdminEmail(adminEmail);
 
   const fetchTrendingTags = async () => {
     try {
@@ -99,7 +104,7 @@ export function TrendingTagsSidebar({ onTagClick, selectedTag, compact }: Trendi
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-[#5865f2]" />
-            <span className="text-sm font-semibold text-[#e4e6eb]">Trending Tags</span>
+            <span className="text-sm font-semibold text-[#e4e6eb]">Top 20 Trending Tags</span>
           </div>
         </div>
         {isLoading ? (
@@ -159,7 +164,7 @@ export function TrendingTagsSidebar({ onTagClick, selectedTag, compact }: Trendi
             <TrendingUp className="w-5 h-5 text-white" />
           </motion.div>
           <h2 className="text-xl font-bold text-[#e4e6eb] bg-gradient-to-r from-[#e4e6eb] to-[#b9bbbe] bg-clip-text text-transparent">
-            Trending Tags
+            Top 20 Trending Tags
           </h2>
         </div>
 
@@ -235,11 +240,35 @@ export function TrendingTagsSidebar({ onTagClick, selectedTag, compact }: Trendi
                       </div>
                     </div>
                     
-                    {/* Right side: Count (perfect circle) */}
-                    <div
-                      className={`flex-shrink-0 ml-3 w-9 h-9 flex items-center justify-center font-bold text-base rounded-full text-white bg-gradient-to-r ${tagColor}`}
-                    >
-                      {tagItem.count}
+                    {/* Right side: Count (perfect circle) + admin delete */}
+                    <div className="flex items-center">
+                      <div
+                        className={`flex-shrink-0 ml-3 w-9 h-9 flex items-center justify-center font-bold text-base rounded-full text-white bg-gradient-to-r ${tagColor}`}
+                      >
+                        {tagItem.count}
+                      </div>
+                      {isAdmin && (
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            const ok = confirm(`Delete tag "${tagItem.tag}" from all posts?`);
+                            if (!ok) return;
+                            try {
+                              const res = await fetch(`/api/tags/${encodeURIComponent(tagItem.tag)}`, { method: "DELETE" });
+                              const data = await res.json();
+                              if (!res.ok) throw new Error(data.error || "Failed to delete tag");
+                              fetchTrendingTags();
+                            } catch (err: any) {
+                              console.error(err);
+                              alert(err.message || "Failed to delete tag");
+                            }
+                          }}
+                          className="ml-2 px-2 py-0.5 rounded-md text-xs bg-red-600/20 text-red-300 border border-red-600/30 cursor-pointer"
+                          title="Delete tag (admin)"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </div>
                   

@@ -9,6 +9,7 @@ import { Filter, Sparkles } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { getAnonUserId } from "@/app/lib/anon-auth";
 import toast from "react-hot-toast";
+import { useRouter } from "next/navigation";
 
 interface Post {
   id: string;
@@ -33,12 +34,21 @@ export default function DiscoverPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const { user } = useUser();
+  const router = useRouter();
 
   // Check authentication on client side only to avoid hydration mismatch
   useEffect(() => {
     const anonUserId = getAnonUserId();
     setIsAuthenticated(!!user || !!anonUserId);
   }, [user]);
+
+  // If user signs out (and not anon), redirect to /home
+  useEffect(() => {
+    const anonUserId = getAnonUserId();
+    if (!user && !anonUserId) {
+      router.replace("/home");
+    }
+  }, [user, router]);
 
   // Listen for custom event from header to open modal
   useEffect(() => {

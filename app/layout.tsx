@@ -5,6 +5,7 @@ import { Providers } from "./providers";
 import { AppFrame } from "./components/AppFrame";
 import { IPBanChecker } from "./components/IPBanChecker";
 import { SuspensionGuard } from "./components/SuspensionGuard";
+import { AuthRedirectGuard } from "./components/AuthRedirectGuard";
 import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 
@@ -54,6 +55,7 @@ export default function RootLayout({
         >
           <IPBanChecker />
           <SuspensionGuard />
+          <AuthRedirectGuard />
           <Providers>
             <AppFrame>{children}</AppFrame>
           </Providers>

@@ -6,6 +6,7 @@ import { ThumbsUp, ThumbsDown, Trash2, User, Hash, AlertTriangle, Flag, MessageS
 import { useUser } from "@clerk/nextjs";
 import { getAnonUserId, getAnonUsername } from "@/app/lib/anon-auth";
 import toast from "react-hot-toast";
+import { checkProfanity } from "@/app/lib/profanity-check";
 import Image from "next/image";
 import { ClerkProfileImage } from "./ClerkProfileImage";
 import { isAdminEmail } from "@/app/lib/admin";
@@ -50,6 +51,8 @@ export function PostCard({ post, onDelete }: PostCardProps) {
   const [comments, setComments] = useState<Array<{id:string; content:string; username:string; created_at:string; likes_count:number; liked:boolean; profile_picture?: string | null; user_id?: string; user_type?: "clerk" | "anonymous"}>>([]);
   const [newComment, setNewComment] = useState("");
   const [isPostingComment, setIsPostingComment] = useState(false);
+  const [commentError, setCommentError] = useState<string | null>(null);
+  const [isCheckingComment, setIsCheckingComment] = useState(false);
   const [commentCount, setCommentCount] = useState(0);
   const [confirmCommentId, setConfirmCommentId] = useState<string | null>(null);
   const [isDeletingComment, setIsDeletingComment] = useState(false);
@@ -238,6 +241,48 @@ export function PostCard({ post, onDelete }: PostCardProps) {
       mql.removeEventListener ? mql.removeEventListener("change", listener) : mql.removeListener(listener);
     };
   }, []);
+
+  // Debounced client-side profanity check for comments
+  useEffect(() => {
+    let id: any;
+    const run = async () => {
+      const text = newComment.trim();
+      if (!text) {
+        setCommentError(null);
+        return;
+      }
+      setIsCheckingComment(true);
+      try {
+        // quick local detection first
+        const normalize = (s: string) =>
+          s
+            .toLowerCase()
+            .replace(/[@]/g, "a")
+            .replace(/[0]/g, "o")
+            .replace(/[1!]/g, "i")
+            .replace(/\$/g, "s")
+            .replace(/3/g, "e");
+        const n = normalize(text);
+        const words = ["fuck", "shit", "bitch", "asshole", "bastard", "cunt", "dick", "pussy", "slut"];
+        const badLocal = words.some((w) => new RegExp(`\\b${w}\\b`, "i").test(n));
+
+        let badRemote = false;
+        try {
+          badRemote = await checkProfanity(text);
+        } catch {}
+
+        const bad = badLocal || badRemote;
+        setCommentError(bad ? "Comment contains prohibited words. Please revise and try again." : null);
+      } catch {
+        // fail open
+        setCommentError(null);
+      } finally {
+        setIsCheckingComment(false);
+      }
+    };
+    id = setTimeout(run, 300);
+    return () => clearTimeout(id);
+  }, [newComment]);
 
   // Load initial comments count (summary)
   useEffect(() => {
@@ -482,6 +527,7 @@ export function PostCard({ post, onDelete }: PostCardProps) {
     }
     const val = newComment.trim();
     if (!val) return;
+    if (commentError || isCheckingComment) return;
     setIsPostingComment(true);
     try {
       const res = await fetch(`/api/posts/${post.id}/comments`, {
@@ -497,11 +543,17 @@ export function PostCard({ post, onDelete }: PostCardProps) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to post comment");
       setNewComment("");
+      setCommentError(null);
       await loadComments();
       // update count from summary
     } catch (e: any) {
       console.error(e);
-      toast.error(e.message || "Failed to post comment");
+      const msg = e?.message || "Failed to post comment";
+      if (typeof msg === "string" && msg.toLowerCase().includes("inappropriate")) {
+        setCommentError("Comment contains prohibited words. Please revise and try again.");
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setIsPostingComment(false);
     }
@@ -600,6 +652,13 @@ export function PostCard({ post, onDelete }: PostCardProps) {
           </motion.button>
         )}
       </div>
+      {/* Client profanity check for comment composer */}
+      <>
+        {(() => {
+          // debounce-like effect
+          return null;
+        })()}
+      </>
 
       {/* Content */}
       <p className="text-[#e4e6eb] mb-4 text-lg leading-relaxed">{post.content}</p>
@@ -705,7 +764,7 @@ export function PostCard({ post, onDelete }: PostCardProps) {
         totals={postReactionsTotals}
         userReactions={postUserReactions}
         onToggle={togglePostReaction}
-        showAdd={false}
+        showAdd
       />
 
       {/* Inline comments for mobile/tablet, right drawer for desktop */}
@@ -717,7 +776,9 @@ export function PostCard({ post, onDelete }: PostCardProps) {
               onChange={(e) => setNewComment(e.target.value)}
               placeholder="Write a comment..."
               rows={2}
-              className="flex-1 px-3 py-2 bg-[#1a1b23] border border-[#3d3f47] rounded-lg text-[#e4e6eb] placeholder-[#9aa0a6] focus:outline-none focus:ring-2 focus:ring-[#5865f2]"
+              className={`flex-1 px-3 py-2 bg-[#1a1b23] rounded-lg text-[#e4e6eb] placeholder-[#9aa0a6] focus:outline-none focus:ring-2 ${
+                commentError ? "border border-red-500 focus:ring-red-500" : "border border-[#3d3f47] focus:ring-[#5865f2]"
+              }`}
             />
             <motion.button
               whileHover={{ scale: isPostingComment ? 1 : 1.03 }}
@@ -729,6 +790,25 @@ export function PostCard({ post, onDelete }: PostCardProps) {
               {isPostingComment ? "Posting..." : "Comment"}
             </motion.button>
           </div>
+          {/* Quick emoji suggestions for comment composing */}
+          <div className="mt-2 flex items-center gap-2">
+            {["😭","💀","😂","🤣","💔","❤️"].map((e) => (
+              <button
+                key={`quick-${e}`}
+                onClick={() => setNewComment((t) => (t ? `${t} ${e}` : e))}
+                className="h-8 w-8 rounded-md bg-[#1f2330] hover:bg-[#2a2f3f] flex items-center justify-center text-lg cursor-pointer"
+                aria-label={`insert ${e}`}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+          {isCheckingComment && (
+            <div className="mt-1 text-xs text-[#b9bbbe]">Checking content...</div>
+          )}
+          {commentError && (
+            <div className="mt-1 text-xs text-red-400">{commentError}</div>
+          )}
 
           <div className="mt-3 space-y-3">
             {comments.map((c, idx) => (
@@ -859,7 +939,9 @@ export function PostCard({ post, onDelete }: PostCardProps) {
                     onChange={(e) => setNewComment(e.target.value)}
                     placeholder="Write a comment..."
                     rows={2}
-                    className="flex-1 px-3 py-2 bg-[#1a1b23] border border-[#3d3f47] rounded-lg text-[#e4e6eb] placeholder-[#9aa0a6] focus:outline-none focus:ring-2 focus:ring-[#5865f2] resize-y max-h-32 min-h-[40px]"
+                    className={`flex-1 px-3 py-2 bg-[#1a1b23] rounded-lg text-[#e4e6eb] placeholder-[#9aa0a6] focus:outline-none resize-y max-h-32 min-h-[40px] focus:ring-2 ${
+                      commentError ? "border border-red-500 focus:ring-red-500" : "border border-[#3d3f47] focus:ring-[#5865f2]"
+                    }`}
                   />
                   <motion.button
                     whileHover={{ scale: isPostingComment ? 1 : 1.03 }}
@@ -871,6 +953,25 @@ export function PostCard({ post, onDelete }: PostCardProps) {
                     {isPostingComment ? "Posting..." : "Comment"}
                   </motion.button>
                 </div>
+                {/* Quick emoji suggestions for desktop composer */}
+                <div className="flex items-center gap-2 mb-3">
+                  {["😭","💀","😂","🤣","💔","❤️"].map((e) => (
+                    <button
+                      key={`quickdesk-${e}`}
+                      onClick={() => setNewComment((t) => (t ? `${t} ${e}` : e))}
+                      className="h-8 w-8 rounded-md bg-[#1f2330] hover:bg-[#2a2f3f] flex items-center justify-center text-lg cursor-pointer"
+                      aria-label={`insert ${e}`}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+                {isCheckingComment && (
+                  <div className="mb-2 text-xs text-[#b9bbbe]">Checking content...</div>
+                )}
+                {commentError && (
+                  <div className="mb-2 text-xs text-red-400">{commentError}</div>
+                )}
 
                 {isLoadingComments ? (
                   <div className="flex items-center justify-center py-10">
@@ -1293,6 +1394,6 @@ function CommentReactions({ commentId, anonUserId }: { commentId: string; anonUs
     }
   };
 
-  return <ReactionsBar totals={totals} userReactions={userReactions} onToggle={toggle} small />;
+  return <ReactionsBar totals={totals} userReactions={userReactions} onToggle={toggle} small showAdd />;
 }
 

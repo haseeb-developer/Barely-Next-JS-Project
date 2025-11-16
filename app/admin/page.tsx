@@ -193,6 +193,7 @@ export default function AdminPanelPage() {
 
   const [tokenOpen, setTokenOpen] = useState(false);
   const [tokenAmount, setTokenAmount] = useState<string>("0");
+  const [tokenSubjectType, setTokenSubjectType] = useState<"anonymous" | "clerk">("anonymous");
   const giveTokens = async () => {
     if (!targetUser) return;
     const amt = parseInt(tokenAmount || "0", 10);
@@ -204,7 +205,7 @@ export default function AdminPanelPage() {
       const res = await fetch("/api/admin/tokens", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject_type: "anonymous", subject_id: targetUser.id, amount: amt }),
+        body: JSON.stringify({ subject_type: tokenSubjectType, subject_id: targetUser.id, amount: amt }),
       });
       const text = await res.text();
       let data: any = {};
@@ -289,7 +290,73 @@ export default function AdminPanelPage() {
       ) : err ? (
         <div className="text-red-400">{err}</div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-6">
+          {/* My account summary */}
+          <div>
+            <h2 className="text-xl font-semibold mb-2">My Account</h2>
+            <div className="overflow-x-auto rounded-xl border border-[#2d2f36] mb-6">
+              <table className="min-w-full text-sm">
+                <thead className="bg-[#1f2330] text-[#9aa0a6] text-left">
+                  <tr>
+                    <th className="px-3 py-2">User</th>
+                    <th className="px-3 py-2">ID</th>
+                    <th className="px-3 py-2">Country</th>
+                    <th className="px-3 py-2">IP</th>
+                    <th className="px-3 py-2">Created</th>
+                    <th className="px-3 py-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-t border-[#2d2f36]">
+                    <td className="px-3 py-2 flex items-center gap-2">
+                      <div className="w-7 h-7 overflow-hidden rounded-full border border-[#3d3f47] bg-[#2a2f3f]" />
+                      <div className="font-medium">{user?.username || user?.firstName || user?.primaryEmailAddress?.emailAddress || "admin"}</div>
+                    </td>
+                    <td className="px-3 py-2 text-[#9aa0a6]">{user?.id}</td>
+                    <td className="px-3 py-2"><span className="text-[#9aa0a6]">N/A</span></td>
+                    <td className="px-3 py-2 text-[#9aa0a6]">N/A</td>
+                    <td className="px-3 py-2 text-[#9aa0a6]">{user?.createdAt ? new Date(user.createdAt).toLocaleString() : "—"}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            // create faux target for clerk self
+                            setTargetUser({ id: user?.id || "", username: user?.username || user?.firstName || "admin", ip_address: null } as any);
+                            setConfirmKind(null);
+                            setTokenOpen(true);
+                            setTokenAmount("0");
+                            setTokenSubjectType("clerk");
+                          }}
+                          className="px-2 py-1 text-xs rounded-md bg-blue-600/20 text-blue-300 border border-blue-600/30 cursor-pointer"
+                          title="Grant tokens"
+                        >
+                          Give Tokens
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await fetch(`/api/admin/tokens?subject_type=clerk&subject_id=${encodeURIComponent(user?.id || "")}`);
+                              const txt = await res.text();
+                              const data = txt ? JSON.parse(txt) : {};
+                              if (!res.ok) throw new Error(data.error || "Failed to fetch tokens");
+                              setToast({ type: "success", message: `Tokens: ${Number(data.balance || 0).toLocaleString()}` });
+                            } catch (e: any) {
+                              setToast({ type: "error", message: e.message || "Failed to fetch tokens" });
+                            }
+                          }}
+                          className="px-2 py-1 text-xs rounded-md bg-[#2d2f36] text-[#c9cbd1] border border-[#3d3f47] cursor-pointer"
+                          title="Show current tokens"
+                        >
+                          Show Tokens
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <h2 className="text-xl font-semibold">Anonymous Users</h2>
           <div className="overflow-x-auto rounded-xl border border-[#2d2f36]">
             <table className="min-w-full text-sm">
