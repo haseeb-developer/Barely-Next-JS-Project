@@ -85,7 +85,7 @@ export function ConfessionModal({ isOpen, onClose }: ConfessionModalProps) {
                         Confess something...
                       </RadixDialog.Title>
                       <RadixDialog.Close asChild>
-                        <button className="text-[#9ca3af] hover:text-[#e4e6eb] transition-colors p-2 hover:bg-[#2a2d35] rounded-lg">
+                        <button className="text-[#9ca3af] hover:text-[#e4e6eb] transition-colors p-2 hover:bg-[#2a2d35] rounded-lg cursor-pointer">
                           <IoClose className="w-6 h-6" />
                         </button>
                       </RadixDialog.Close>
@@ -139,7 +139,7 @@ export function ConfessionModal({ isOpen, onClose }: ConfessionModalProps) {
                         <RadixDialog.Close asChild>
                           <button
                             type="button"
-                            className="px-4 py-2 text-[#e4e6eb] hover:bg-[#2a2d35] rounded-lg transition-colors font-medium"
+                            className="px-4 py-2 text-[#e4e6eb] hover:bg-[#2a2d35] rounded-lg transition-colors font-medium cursor-pointer"
                           >
                             Cancel
                           </button>
@@ -147,7 +147,7 @@ export function ConfessionModal({ isOpen, onClose }: ConfessionModalProps) {
                         <button
                           type="submit"
                           disabled={isSubmitting}
-                          className="flex items-center space-x-2 px-6 py-2 bg-gradient-to-r from-[#5865f2] to-[#4752c4] hover:from-[#4752c4] hover:to-[#5865f2] disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all shadow-md hover:shadow-lg"
+                          className="flex items-center space-x-2 px-6 py-2 bg-gradient-to-r from-[#5865f2] to-[#4752c4] hover:from-[#4752c4] hover:to-[#5865f2] disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all shadow-md hover:shadow-lg cursor-pointer"
                         >
                           <span>🔥</span>
                           <span>{isSubmitting ? "Posting..." : "Confess"}</span>

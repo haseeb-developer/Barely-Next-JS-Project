@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   SignInButton,
@@ -12,10 +13,14 @@ import {
 } from "@clerk/nextjs";
 import { UserProfile } from "./UserProfile";
 import { HeaderNav } from "./HeaderNav";
-import { ConfessionModal } from "./ConfessionModal";
+import { AccountDropdown } from "./AccountDropdown";
 import { useUser } from "@clerk/nextjs";
 import { UserButton } from "@clerk/nextjs";
 import { useRef } from "react";
+import { getAnonUserId, getAnonUserEmail, getAnonUsername, clearAnonUser, isAnonUser } from "@/app/lib/anon-auth";
+import { SignUpPromptModal } from "./SignUpPromptModal";
+import Image from "next/image";
+import { User } from "lucide-react";
 
 interface HeaderProps {
   pacificoClassName: string;
@@ -23,10 +28,88 @@ interface HeaderProps {
 
 export function Header({ pacificoClassName }: HeaderProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isConfessionModalOpen, setIsConfessionModalOpen] = useState(false);
+  const [anonUserId, setAnonUserId] = useState<string | null>(null);
+  const [anonUserEmail, setAnonUserEmail] = useState<string | null>(null);
+  const [anonUsername, setAnonUsername] = useState<string | null>(null);
+  const [anonProfilePicture, setAnonProfilePicture] = useState<string | null>(null);
+  const [showSignUpModal, setShowSignUpModal] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
   const { user } = useUser();
   const userButtonRef = useRef<HTMLDivElement>(null);
+  const [tokens, setTokens] = useState<number>(0);
+
+  useEffect(() => {
+    // Check for anon user on mount and when pathname changes
+    const userId = getAnonUserId();
+    const email = getAnonUserEmail();
+    const username = getAnonUsername();
+    setAnonUserId(userId);
+    setAnonUserEmail(email);
+    setAnonUsername(username);
+
+    // Fetch profile picture for anonymous user
+    if (userId) {
+      fetch(`/api/users/profile-picture?anonUserId=${userId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.profilePicture) {
+            setAnonProfilePicture(data.profilePicture);
+          }
+        })
+        .catch(console.error);
+    } else {
+      setAnonProfilePicture(null);
+    }
+  }, [pathname]);
+
+  // Listen for profile picture updates
+  useEffect(() => {
+    const handleProfilePictureUpdate = () => {
+      if (anonUserId) {
+        fetch(`/api/users/profile-picture?anonUserId=${anonUserId}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.profilePicture) {
+              setAnonProfilePicture(data.profilePicture);
+            } else {
+              setAnonProfilePicture(null);
+            }
+          })
+          .catch(console.error);
+      }
+    };
+
+    window.addEventListener("profilePictureUpdated", handleProfilePictureUpdate);
+    return () => {
+      window.removeEventListener("profilePictureUpdated", handleProfilePictureUpdate);
+    };
+  }, [anonUserId]);
+
+  // Award daily tokens and fetch balance
+  useEffect(() => {
+    const awardAndFetch = async () => {
+      try {
+        const anonId = getAnonUserId();
+        await fetch("/api/tokens", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ anonUserId: anonId || null }),
+        });
+        const res = await fetch(`/api/tokens${anonId ? `?anonUserId=${anonId}` : ""}`);
+        const data = await res.json();
+        if (res.ok) setTokens(data.balance || 0);
+      } catch {}
+    };
+    awardAndFetch();
+  }, [pathname]);
+
+  const handleAnonLogout = () => {
+    clearAnonUser();
+    setAnonUserId(null);
+    setAnonUserEmail(null);
+    setAnonUsername(null);
+  };
 
   const navLinks = [
     { href: "/trending", label: "Trending" },
@@ -63,7 +146,7 @@ export function Header({ pacificoClassName }: HeaderProps) {
           <div className="flex items-center justify-between h-14 sm:h-16 md:h-[72px] lg:h-20 gap-2 sm:gap-4">
             {/* Logo on the left */}
             <Link
-              href="/"
+              href="/home"
               className="flex items-center space-x-2 sm:space-x-3 group min-w-0 flex-shrink-0"
               onClick={closeMobileMenu}
             >
@@ -107,90 +190,75 @@ export function Header({ pacificoClassName }: HeaderProps) {
             </div>
 
             {/* Desktop Auth buttons on the right - Hidden on mobile */}
-            <motion.div
-              initial="hidden"
-              animate="visible"
-              variants={{
-                visible: {
-                  transition: {
-                    staggerChildren: 0.1,
-                    delayChildren: 0.3,
-                  },
-                },
-              }}
-              className="hidden sm:flex items-center gap-2 sm:gap-3 flex-shrink-0 ml-auto"
-            >
+            <div className="hidden sm:flex items-center gap-3 sm:gap-4 flex-shrink-0 ml-auto">
+              {/* Tokens pill */}
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-[#2d2f36] border border-[#3d3f47]">
+                <Image src="/token.svg" alt="Tokens" width={18} height={18} />
+                <span className="text-sm font-semibold text-[#facc15]">{tokens}</span>
+              </div>
               <SignedOut>
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, x: 20, scale: 0.8 },
-                    visible: {
-                      opacity: 1,
-                      x: 0,
-                      scale: 1,
-                      transition: {
-                        type: "spring",
-                        damping: 15,
-                        stiffness: 300,
-                      },
-                    },
-                  }}
-                >
-                  <SignInButton mode="modal">
-                    <motion.button
-                      whileHover={{
-                        scale: 1.05,
-                        color: "#ffffff",
-                        x: 2,
-                      }}
-                      whileTap={{ scale: 0.95 }}
-                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-[#e4e6eb] font-medium hover:text-white transition-colors text-xs sm:text-sm whitespace-nowrap"
-                    >
-                      Login
-                    </motion.button>
-                  </SignInButton>
-                </motion.div>
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, x: 20, scale: 0.8 },
-                    visible: {
-                      opacity: 1,
-                      x: 0,
-                      scale: 1,
-                      transition: {
-                        type: "spring",
-                        damping: 15,
-                        stiffness: 300,
-                      },
-                    },
-                  }}
-                >
-                  <SignUpButton mode="modal">
-                    <motion.button
-                      whileHover={{
-                        scale: 1.05,
-                        boxShadow: "0 8px 20px rgba(88, 101, 242, 0.3)",
-                        backgroundColor: "#4752c4",
-                      }}
-                      whileTap={{ scale: 0.95 }}
-                      className="px-3 sm:px-4 md:px-5 py-1.5 sm:py-2 bg-[#5865f2] hover:bg-[#4752c4] text-white font-medium rounded-lg transition-colors text-xs sm:text-sm whitespace-nowrap"
-                    >
-                      Sign Up
-                    </motion.button>
-                  </SignUpButton>
-                </motion.div>
+                {!anonUserId ? (
+                  <motion.div
+                    initial={{ opacity: 0, x: 20, scale: 0.8 }}
+                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                    transition={{
+                      type: "spring",
+                      damping: 15,
+                      stiffness: 300,
+                      delay: 0.3,
+                    }}
+                  >
+                    <AccountDropdown />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    initial={{ opacity: 0, x: 20, scale: 0.8 }}
+                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                    transition={{
+                      type: "spring",
+                      damping: 15,
+                      stiffness: 300,
+                    }}
+                    className="flex items-center gap-3"
+                  >
+                    {/* Profile Picture */}
+                    {anonProfilePicture ? (
+                      <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-[#5865f2] bg-[#1a1b23] flex-shrink-0">
+                        <Image
+                          src={anonProfilePicture}
+                          alt={anonUsername || "Anonymous"}
+                          width={32}
+                          height={32}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#5865f2] to-[#4752c4] flex items-center justify-center flex-shrink-0">
+                        <User className="w-4 h-4 text-white" />
+                      </div>
+                    )}
+                    <span className="text-sm text-[#b9bbbe]">
+                      {anonUsername || anonUserEmail || "Anonymous User"}
+                    </span>
+                    <AccountDropdown
+                      isAnonUser={true}
+                      anonUserId={anonUserId}
+                      onAnonLogout={handleAnonLogout}
+                    />
+                  </motion.div>
+                )}
               </SignedOut>
               <SignedIn>
                 <UserProfile />
               </SignedIn>
-            </motion.div>
+            </div>
 
             {/* Hamburger menu button - Only visible on mobile */}
             <motion.button
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="sm:hidden flex flex-col items-center justify-center w-8 h-8 gap-1.5 focus:outline-none"
+                  className="sm:hidden flex flex-col items-center justify-center w-8 h-8 gap-1.5 focus:outline-none cursor-pointer"
               aria-label="Toggle menu"
             >
               <motion.span
@@ -281,29 +349,31 @@ export function Header({ pacificoClassName }: HeaderProps) {
                 }}
                 className="flex items-center justify-between p-4 border-b border-[#2d2f36]/30 flex-shrink-0"
               >
-                <motion.span
-                  initial={{ scale: 0.5, opacity: 0, rotate: -180, y: -20 }}
-                  animate={{ scale: 1, opacity: 1, rotate: 0, y: 0 }}
-                  transition={{
-                    delay: 0.15,
-                    type: "spring",
-                    damping: 12,
-                    stiffness: 500,
-                  }}
-                  whileHover={{
-                    scale: 1.1,
-                    rotate: [0, -5, 5, -5, 0],
-                    transition: {
-                      type: "keyframes",
-                      duration: 0.5,
-                      ease: "easeInOut",
-                    },
-                  }}
-                  whileTap={{ scale: 0.95 }}
-                  className={`${pacificoClassName} text-2xl font-bold text-[#e4e6eb] cursor-pointer`}
-                >
+                <Link href="/home" onClick={closeMobileMenu}>
+                  <motion.span
+                    initial={{ scale: 0.5, opacity: 0, rotate: -180, y: -20 }}
+                    animate={{ scale: 1, opacity: 1, rotate: 0, y: 0 }}
+                    transition={{
+                      delay: 0.15,
+                      type: "spring",
+                      damping: 12,
+                      stiffness: 500,
+                    }}
+                    whileHover={{
+                      scale: 1.1,
+                      rotate: [0, -5, 5, -5, 0],
+                      transition: {
+                        type: "keyframes",
+                        duration: 0.5,
+                        ease: "easeInOut",
+                      },
+                    }}
+                    whileTap={{ scale: 0.95 }}
+                    className={`${pacificoClassName} text-2xl font-bold text-[#e4e6eb] cursor-pointer`}
+                  >
                   Barely
-                </motion.span>
+                  </motion.span>
+                </Link>
                 <motion.button
                   initial={{ scale: 0, rotate: -90 }}
                   animate={{ scale: 1, rotate: 0 }}
@@ -330,7 +400,7 @@ export function Header({ pacificoClassName }: HeaderProps) {
                       closeMobileMenu();
                     }, 250);
                   }}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#2d2f36] transition-colors"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#2d2f36] transition-colors cursor-pointer"
                   aria-label="Close menu"
                 >
                   <svg
@@ -388,42 +458,42 @@ export function Header({ pacificoClassName }: HeaderProps) {
                         }}
                       >
                         <Link
-                          href={link.href}
-                          onClick={closeMobileMenu}
+                        href={link.href}
+                        onClick={closeMobileMenu}
                           className="relative block"
-                        >
-                          <motion.div
-                            initial={false}
-                            animate={{
-                              backgroundColor: isActive(link.href)
-                                ? "rgba(88, 101, 242, 0.12)"
-                                : "transparent",
-                            }}
+                      >
+                        <motion.div
+                          initial={false}
+                          animate={{
+                            backgroundColor: isActive(link.href)
+                              ? "rgba(88, 101, 242, 0.12)"
+                              : "transparent",
+                          }}
                             whileHover={{ 
                               backgroundColor: "rgba(88, 101, 242, 0.08)",
                               x: 4,
                             }}
-                            whileTap={{ scale: 0.98 }}
-                            className="px-4 py-3 rounded-lg transition-all duration-200"
+                          whileTap={{ scale: 0.98 }}
+                          className="px-4 py-3 rounded-lg transition-all duration-200"
+                        >
+                          <span
+                            className={`font-poppins text-base font-semibold relative z-10 ${
+                              isActive(link.href)
+                                ? "text-[#5865f2]"
+                                : "text-[#b9bbbe]"
+                            } transition-colors duration-200`}
                           >
-                            <span
-                              className={`font-poppins text-base font-semibold relative z-10 ${
-                                isActive(link.href)
-                                  ? "text-[#5865f2]"
-                                  : "text-[#b9bbbe]"
-                              } transition-colors duration-200`}
-                            >
-                              {link.label}
-                            </span>
-                            {isActive(link.href) && (
-                              <motion.div
-                                layoutId="activeTabMobile"
-                                className="absolute inset-0 bg-[#5865f2]/12 rounded-lg"
-                                transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                              />
-                            )}
-                          </motion.div>
-                        </Link>
+                            {link.label}
+                          </span>
+                          {isActive(link.href) && (
+                            <motion.div
+                              layoutId="activeTabMobile"
+                              className="absolute inset-0 bg-[#5865f2]/12 rounded-lg"
+                              transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                            />
+                          )}
+                        </motion.div>
+                      </Link>
                       </motion.div>
                     ))}
                   </div>
@@ -452,35 +522,42 @@ export function Header({ pacificoClassName }: HeaderProps) {
                       },
                     }}
                   >
-                    <motion.button
+                  <motion.button
                       whileHover={{ 
                         scale: 1.02,
                         boxShadow: "0 10px 25px rgba(88, 101, 242, 0.3)",
                       }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => {
-                        setIsConfessionModalOpen(true);
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => {
+                      // Check authentication before opening modal
+                      const anonUserId = getAnonUserId();
+                      if (!user && !anonUserId) {
                         closeMobileMenu();
-                      }}
-                      className="w-full px-4 py-3 bg-gradient-to-r from-[#5865f2] to-[#4752c4] hover:from-[#4752c4] hover:to-[#5865f2] text-white font-poppins font-semibold rounded-lg transition-all duration-300"
-                    >
-                      Confess
-                    </motion.button>
+                        setShowSignUpModal(true);
+                        return;
+                      }
+                      closeMobileMenu();
+                      // Navigate to discover page if not already there, then open modal
+                      if (pathname !== "/discover") {
+                        router.push("/discover");
+                        // Wait a bit for navigation, then dispatch event
+                        setTimeout(() => {
+                          window.dispatchEvent(new CustomEvent("openCreatePostModal"));
+                        }, 100);
+                      } else {
+                        // Dispatch custom event to open modal in Discover page
+                        window.dispatchEvent(new CustomEvent("openCreatePostModal"));
+                      }
+                    }}
+                    className="w-full px-4 py-3 bg-gradient-to-r from-[#5865f2] to-[#4752c4] hover:from-[#4752c4] hover:to-[#5865f2] text-white font-poppins font-semibold rounded-lg transition-all duration-300 cursor-pointer"
+                  >
+                    Confess
+                  </motion.button>
                   </motion.div>
 
                   {/* Auth Buttons - Only show if signed out */}
                   <SignedOut>
-                    <motion.div
-                      variants={{
-                        open: {
-                          transition: { staggerChildren: 0.1 },
-                        },
-                        closed: {
-                          transition: { staggerChildren: 0.05, staggerDirection: -1 },
-                        },
-                      }}
-                      className="flex flex-col gap-3 pt-2"
-                    >
+                    {!anonUserId ? (
                       <motion.div
                         variants={{
                           open: {
@@ -500,18 +577,13 @@ export function Header({ pacificoClassName }: HeaderProps) {
                             },
                           },
                         }}
+                        className="pt-2"
                       >
-                        <SignInButton mode="modal">
-                          <motion.button
-                            whileHover={{ scale: 1.02, x: 4 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={closeMobileMenu}
-                            className="w-full px-4 py-3 text-[#e4e6eb] font-medium hover:bg-[#2d2f36] rounded-lg transition-colors text-base"
-                          >
-                            Login
-                          </motion.button>
-                        </SignInButton>
+                        <div className="w-full">
+                          <AccountDropdown />
+                        </div>
                       </motion.div>
+                    ) : (
                       <motion.div
                         variants={{
                           open: {
@@ -531,22 +603,38 @@ export function Header({ pacificoClassName }: HeaderProps) {
                             },
                           },
                         }}
+                        className="pt-2 space-y-3"
                       >
-                        <SignUpButton mode="modal">
-                          <motion.button
-                            whileHover={{ 
-                              scale: 1.02,
-                              boxShadow: "0 8px 20px rgba(88, 101, 242, 0.25)",
-                            }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={closeMobileMenu}
-                            className="w-full px-4 py-3 bg-[#5865f2] hover:bg-[#4752c4] text-white font-medium rounded-lg transition-colors text-base"
-                          >
-                            Sign Up
-                          </motion.button>
-                        </SignUpButton>
+                        <div className="px-4 py-2 flex items-center gap-3">
+                          {/* Profile Picture */}
+                          {anonProfilePicture ? (
+                            <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-[#5865f2] bg-[#1a1b23] flex-shrink-0">
+                              <Image
+                                src={anonProfilePicture}
+                                alt={anonUsername || "Anonymous"}
+                                width={32}
+                                height={32}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#5865f2] to-[#4752c4] flex items-center justify-center flex-shrink-0">
+                              <User className="w-4 h-4 text-white" />
+                            </div>
+                          )}
+                          <span className="text-sm text-[#b9bbbe]">
+                            {anonUsername || anonUserEmail || "Anonymous User"}
+                          </span>
+                        </div>
+                        <div className="w-full">
+                          <AccountDropdown
+                            isAnonUser={true}
+                            anonUserId={anonUserId}
+                            onAnonLogout={handleAnonLogout}
+                          />
+                    </div>
                       </motion.div>
-                    </motion.div>
+                    )}
                   </SignedOut>
                 </div>
               </motion.div>
@@ -587,10 +675,10 @@ export function Header({ pacificoClassName }: HeaderProps) {
         )}
       </AnimatePresence>
 
-      {/* Confession Modal */}
-      <ConfessionModal
-        isOpen={isConfessionModalOpen}
-        onClose={() => setIsConfessionModalOpen(false)}
+      {/* Sign Up Prompt Modal */}
+      <SignUpPromptModal
+        isOpen={showSignUpModal}
+        onClose={() => setShowSignUpModal(false)}
       />
     </>
   );

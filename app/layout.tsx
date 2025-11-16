@@ -3,6 +3,9 @@ import { Geist, Geist_Mono, Inter, Poppins, Pacifico } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Providers } from "./providers";
 import { Header } from "./components/Header";
+import { Footer } from "./components/Footer";
+import { IPBanChecker } from "./components/IPBanChecker";
+import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -46,13 +49,18 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en">
         <body
-          className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} ${poppins.variable} ${pacifico.variable} antialiased bg-[#1a1b23] text-[#e4e6eb]`}
+          className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} ${poppins.variable} ${pacifico.variable} antialiased bg-[#1a1b23] text-[#e4e6eb] flex flex-col min-h-screen`}
           suppressHydrationWarning
         >
+          <IPBanChecker />
           <Header pacificoClassName={pacifico.className} />
           <Providers>
+            <main className="flex-1">
             {children}
+            </main>
           </Providers>
+          <Footer />
+          <Analytics />
         </body>
       </html>
     </ClerkProvider>

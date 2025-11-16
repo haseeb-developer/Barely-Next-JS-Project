@@ -292,7 +292,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "login" }: AuthModalP
                           type="button"
                           onClick={handleResendVerification}
                           disabled={isResendingEmail}
-                          className="text-xs text-[#5865f2] hover:text-[#4752c4] font-medium hover:underline disabled:opacity-50"
+                          className="text-xs text-[#5865f2] hover:text-[#4752c4] font-medium hover:underline disabled:opacity-50 cursor-pointer"
                         >
                           {isResendingEmail ? "Sending..." : "Resend verification email"}
                         </button>
@@ -330,7 +330,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "login" }: AuthModalP
                     <button
                       type="button"
                       onClick={() => setShowLoginPassword(!showLoginPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-[#e4e6eb] transition-colors focus:outline-none"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-[#e4e6eb] transition-colors focus:outline-none cursor-pointer"
                       tabIndex={-1}
                     >
                       {showLoginPassword ? (
@@ -348,7 +348,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "login" }: AuthModalP
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3 bg-[#5865f2] hover:bg-[#4752c4] text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full py-3 bg-[#5865f2] hover:bg-[#4752c4] text-white font-semibold rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isLoading ? "Signing in..." : "Sign In"}
                 </button>
@@ -358,7 +358,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "login" }: AuthModalP
                   <button
                     type="button"
                     onClick={handleModeSwitch}
-                    className="text-[#5865f2] hover:text-[#4752c4] font-medium hover:underline"
+                    className="text-[#5865f2] hover:text-[#4752c4] font-medium hover:underline cursor-pointer"
                   >
                     Sign Up
                   </button>
@@ -409,7 +409,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "login" }: AuthModalP
                     <button
                       type="button"
                       onClick={() => setShowSignUpPassword(!showSignUpPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-[#e4e6eb] transition-colors focus:outline-none"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-[#e4e6eb] transition-colors focus:outline-none cursor-pointer"
                       tabIndex={-1}
                     >
                       {showSignUpPassword ? (
@@ -438,7 +438,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "login" }: AuthModalP
                     <button
                       type="button"
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-[#e4e6eb] transition-colors focus:outline-none"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-[#e4e6eb] transition-colors focus:outline-none cursor-pointer"
                       tabIndex={-1}
                     >
                       {showConfirmPassword ? (
@@ -456,7 +456,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "login" }: AuthModalP
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3 bg-[#5865f2] hover:bg-[#4752c4] text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full py-3 bg-[#5865f2] hover:bg-[#4752c4] text-white font-semibold rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isLoading ? "Creating account..." : "Sign Up"}
                 </button>
@@ -466,7 +466,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "login" }: AuthModalP
                   <button
                     type="button"
                     onClick={handleModeSwitch}
-                    className="text-[#5865f2] hover:text-[#4752c4] font-medium hover:underline"
+                    className="text-[#5865f2] hover:text-[#4752c4] font-medium hover:underline cursor-pointer"
                   >
                     Sign In
                   </button>
