@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/app/lib/supabase/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { checkProfanityServer } from "@/app/lib/profanity-check-server";
+import { isAdminEmail } from "@/app/lib/admin";
 
 // GET - Fetch all posts with likes/dislikes counts
 export async function GET(request: NextRequest) {
@@ -116,6 +117,16 @@ export async function GET(request: NextRequest) {
         const client = anyClerk.clerkClient ? anyClerk.clerkClient : null;
         if (client) {
           let users: any[] = [];
+          // Also resolve admin Clerk user IDs from the admin email list to ensure everyone sees the badge
+          let adminUserIds: Set<string> = new Set();
+          try {
+            const { ADMIN_EMAILS } = await import("@/app/lib/admin");
+            if (ADMIN_EMAILS?.length) {
+              const resAdmins = await client.users.getUserList({ emailAddress: ADMIN_EMAILS });
+              const adminList = (resAdmins?.data || resAdmins || []) as any[];
+              adminUserIds = new Set(adminList.map((u: any) => u.id));
+            }
+          } catch {}
           try {
             // Prefer batch API if available
             if (client.users?.getUserList) {
@@ -127,11 +138,19 @@ export async function GET(request: NextRequest) {
             }
           } catch {}
 
-          const clerkMap = new Map(users.map((u: any) => [u.id, { imageUrl: u.imageUrl || null, name: (u.username || u.firstName || (u.primaryEmailAddress?.emailAddress?.split("@")[0]) || "User") }]));
+          const clerkMap = new Map(users.map((u: any) => {
+            const primary = u?.primaryEmailAddress?.emailAddress || u?.emailAddresses?.[0]?.emailAddress || null;
+            return [u.id, { 
+              imageUrl: u.imageUrl || null, 
+              name: (u.username || u.firstName || (primary?.split("@")[0]) || "User"),
+              isAdmin: adminUserIds.has(u.id) || isAdminEmail(primary)
+            }];
+          }));
           postsWithCounts = postsWithCounts.map((p: any) => ({
             ...p,
             profile_picture: p.user_type === "clerk" ? (clerkMap.get(p.user_id)?.imageUrl || p.profile_picture || null) : p.profile_picture || null,
             username: p.user_type === "clerk" ? (clerkMap.get(p.user_id)?.name || p.username) : p.username,
+            is_admin: p.user_type === "clerk" ? !!clerkMap.get(p.user_id)?.isAdmin : false,
           }));
         }
       }
@@ -181,18 +200,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate word count (min 10, max 50 words)
+    // Validate word count (min 10, max 50 words) — skip for admin
     const words = content.trim().split(/\s+/).filter(word => word.length > 0);
     const wordCount = words.length;
 
-    if (wordCount < 10) {
+    // Determine early if the request is from an admin Clerk user (bypass limits)
+    let isAdminFlag = false;
+    if (clerkUserId) {
+      try {
+        const user = await currentUser();
+        const primary = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || null;
+        if (primary) isAdminFlag = isAdminEmail(primary);
+      } catch {}
+    }
+
+    if (!isAdminFlag && wordCount < 10) {
       return NextResponse.json(
         { error: "Confession must be at least 10 words" },
         { status: 400 }
       );
     }
 
-    if (wordCount > 50) {
+    if (!isAdminFlag && wordCount > 50) {
       return NextResponse.json(
         { error: "Confession must be 50 words or less" },
         { status: 400 }
@@ -201,7 +230,7 @@ export async function POST(request: NextRequest) {
 
     // Check for profanity
     const isClean = await checkProfanityServer(content.trim());
-    if (!isClean) {
+    if (!isAdminFlag && !isClean) {
       return NextResponse.json(
         { error: "Your confession contains inappropriate content. Please revise it." },
         { status: 400 }
@@ -223,6 +252,8 @@ export async function POST(request: NextRequest) {
       try {
         const user = await currentUser();
         profilePicture = user?.imageUrl ?? null;
+        const primary = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || null;
+        if (primary) isAdminFlag = isAdminEmail(primary) || isAdminFlag;
       } catch (e) {
         profilePicture = null;
       }
@@ -282,6 +313,10 @@ export async function POST(request: NextRequest) {
       user_type: userType,
       username: username,
     };
+
+    if (isAdminFlag) {
+      insertData.is_admin = true;
+    }
 
     if (profilePicture) {
       insertData.profile_picture = profilePicture;

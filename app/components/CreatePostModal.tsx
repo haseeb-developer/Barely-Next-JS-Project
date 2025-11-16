@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Send, AlertCircle, Hash } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
+import { isAdminEmail } from "@/app/lib/admin";
 import { getAnonUserId, getAnonUsername } from "@/app/lib/anon-auth";
 import { checkProfanity } from "@/app/lib/profanity-check";
 import toast from "react-hot-toast";
@@ -36,14 +37,15 @@ export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostMo
 
   const minWords = 10;
   const maxWords = 50;
+  const isAdmin = !!(user?.primaryEmailAddress?.emailAddress && isAdminEmail(user.primaryEmailAddress.emailAddress));
   
   // Count words in content
   const wordCount = content.trim() ? content.trim().split(/\s+/).filter(word => word.length > 0).length : 0;
-  const isValidWordCount = wordCount >= minWords && wordCount <= maxWords;
+  const isValidWordCount = isAdmin ? wordCount >= 1 : (wordCount >= minWords && wordCount <= maxWords);
   
   // Check for profanity in content (debounced)
   useEffect(() => {
-    if (!content.trim() || wordCount < minWords) {
+    if (!content.trim() || (!isAdmin && wordCount < minWords)) {
       setContentProfanityError(false);
       return;
     }
@@ -62,7 +64,7 @@ export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostMo
     }, 500); // Debounce 500ms
 
     return () => clearTimeout(timeoutId);
-  }, [content, wordCount, minWords]);
+  }, [content, wordCount, minWords, isAdmin]);
 
   // Check for profanity in tags (debounced)
   useEffect(() => {
@@ -104,12 +106,12 @@ export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostMo
       return;
     }
 
-    if (wordCount < minWords) {
+    if (!isAdmin && wordCount < minWords) {
       toast.error(`Confession must be at least ${minWords} words`);
       return;
     }
 
-    if (wordCount > maxWords) {
+    if (!isAdmin && wordCount > maxWords) {
       toast.error(`Confession must be ${maxWords} words or less`);
       return;
     }
@@ -238,7 +240,14 @@ export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostMo
             >
               {/* Header */}
               <div className="flex items-center justify-between p-6 border-b border-[#3d3f47]">
-                <h2 className="text-xl font-semibold text-[#e4e6eb]">Share Your Confession</h2>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-semibold text-[#e4e6eb]">Share Your Confession</h2>
+                  {isAdmin && (
+                    <span className="px-2.5 py-1 text-xs rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                      You’re admin — limits disabled
+                    </span>
+                  )}
+                </div>
                 <motion.button
                   whileHover={{ scale: 1.1, rotate: 90 }}
                   whileTap={{ scale: 0.9 }}
@@ -272,7 +281,7 @@ export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostMo
                         disabled={isLoading}
                       />
                       <div className="absolute bottom-2 right-2 flex items-center gap-2">
-                        {wordCount > 0 && !isValidWordCount && (
+                        {wordCount > 0 && !isValidWordCount && !isAdmin && (
                           <motion.div
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
@@ -283,23 +292,25 @@ export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostMo
                         )}
                         <span
                           className={`text-xs font-medium ${
-                            wordCount < minWords
+                            !isAdmin && wordCount < minWords
                               ? "text-red-400"
-                              : wordCount > maxWords
+                              : !isAdmin && wordCount > maxWords
                               ? "text-red-400"
                               : isValidWordCount
                               ? "text-green-400"
                               : "text-[#b9bbbe]"
                           }`}
                         >
-                          {wordCount}/{maxWords} words
+                          {isAdmin ? `${wordCount} words` : `${wordCount}/${maxWords} words`}
                         </span>
                       </div>
                     </div>
-                    <p className="mt-1 text-xs text-[#b9bbbe]">
-                      Minimum {minWords} words, maximum {maxWords} words
-                    </p>
-                    {wordCount > 0 && wordCount < minWords && (
+                    {!isAdmin && (
+                      <p className="mt-1 text-xs text-[#b9bbbe]">
+                        Minimum {minWords} words, maximum {maxWords} words
+                      </p>
+                    )}
+                    {!isAdmin && wordCount > 0 && wordCount < minWords && (
                       <motion.div
                         initial={{ opacity: 0, y: -5 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -318,7 +329,7 @@ export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostMo
                         Your confession contains inappropriate content. Please revise it.
                       </motion.div>
                     )}
-                    {isCheckingProfanity && wordCount >= minWords && !contentProfanityError && (
+                    {isCheckingProfanity && (!isAdmin ? wordCount >= minWords : wordCount >= 1) && !contentProfanityError && (
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -450,7 +461,7 @@ export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostMo
 
                   <motion.button
                     type="submit"
-                    disabled={isLoading || !content.trim() || !isValidWordCount || tagErrors.length > 0 || contentProfanityError || tagProfanityErrors.length > 0}
+                    disabled={isLoading || !content.trim() || (!isAdmin && !isValidWordCount) || tagErrors.length > 0 || contentProfanityError || tagProfanityErrors.length > 0}
                     whileHover={{ scale: isLoading ? 1 : 1.02 }}
                     whileTap={{ scale: isLoading ? 1 : 0.98 }}
                     className="w-full py-3 bg-[#5865f2] hover:bg-[#4752c4] disabled:bg-[#3d3f47] disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer"

@@ -21,6 +21,7 @@ interface Post {
   dislikes_count: number;
   flags_count?: number;
   profile_picture?: string | null;
+  is_admin?: boolean;
   tags?: string[];
 }
 
@@ -40,6 +41,8 @@ export function PostCard({ post, onDelete }: PostCardProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isReacting, setIsReacting] = useState(false);
   const [isFlagging, setIsFlagging] = useState(false);
+  const [showResetFlags, setShowResetFlags] = useState(false);
+  const [isResettingFlags, setIsResettingFlags] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { user } = useUser();
   const anonUserId = getAnonUserId();
@@ -164,6 +167,12 @@ export function PostCard({ post, onDelete }: PostCardProps) {
       return;
     }
 
+    // Admin flow: open reset dialog instead of flagging
+    if (isAdmin) {
+      setShowResetFlags(true);
+      return;
+    }
+
     if (isFlagging) return;
     setIsFlagging(true);
 
@@ -199,6 +208,28 @@ export function PostCard({ post, onDelete }: PostCardProps) {
       toast.error(error.message || "Failed to flag post");
     } finally {
       setIsFlagging(false);
+    }
+  };
+
+  const confirmResetFlags = async () => {
+    setIsResettingFlags(true);
+    try {
+      const res = await fetch(`/api/posts/${post.id}/flag`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to reset flags");
+      }
+      setFlagsCount(0);
+      setIsFlagged(false);
+      toast.success("Flags reset to 0");
+      setShowResetFlags(false);
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e.message || "Failed to reset flags");
+    } finally {
+      setIsResettingFlags(false);
     }
   };
 
@@ -344,8 +375,18 @@ export function PostCard({ post, onDelete }: PostCardProps) {
             </div>
           )}
           <div>
-            <p className="text-sm font-medium text-[#e4e6eb]">
+            <p className="text-sm font-medium text-[#e4e6eb] flex items-center gap-2">
               By {post.username}
+              {(post.is_admin || (isAdmin && post.user_id === currentUserId)) && (
+                <span className="relative inline-flex group">
+                  <svg viewBox="0 0 22 22" aria-label="Verified account" role="img" className="w-4 h-4 text-blue-400 cursor-pointer" data-testid="icon-verified">
+                    <g><path d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z" fill="currentColor"></path></g>
+                  </svg>
+                  <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-8 hidden group-hover:block bg-[#111318] text-white text-xs px-2 py-1 rounded-md border border-[#3d3f47] whitespace-nowrap shadow-lg">
+                    Verified Developer | Creator
+                  </span>
+                </span>
+              )}
             </p>
             <p className="text-xs text-[#b9bbbe]">{formatDate(post.created_at)}</p>
           </div>
@@ -428,7 +469,7 @@ export function PostCard({ post, onDelete }: PostCardProps) {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={handleFlag}
-          disabled={isFlagging || !currentUserId || isFlagged}
+          disabled={isFlagging || !currentUserId || (!isAdmin && isFlagged)}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors cursor-pointer ${
             isFlagged
               ? "bg-orange-500 text-white"
@@ -516,6 +557,81 @@ export function PostCard({ post, onDelete }: PostCardProps) {
                       </>
                     ) : (
                       "Delete"
+                    )}
+                  </motion.button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Admin: Reset Flags Modal */}
+      <AnimatePresence>
+        {showResetFlags && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowResetFlags(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#2d2f36] rounded-2xl shadow-2xl max-w-md w-full mx-4 z-50 border border-[#3d3f47]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6">
+                <div className="flex items-center gap-4 mb-4">
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", delay: 0.1 }}
+                    className="w-12 h-12 rounded-full bg-orange-500/20 flex items-center justify-center flex-shrink-0"
+                  >
+                    <Flag className="w-6 h-6 text-orange-400" />
+                  </motion.div>
+                  <div>
+                    <h3 className="text-xl font-semibold text-[#e4e6eb]">
+                      Reset Flags
+                    </h3>
+                    <p className="text-sm text-[#b9bbbe] mt-1">
+                      Set this post’s flag count back to 0? Users will be able to flag it again.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setShowResetFlags(false)}
+                    className="flex-1 px-4 py-3 bg-[#1a1b23] hover:bg-[#3d3f47] text-[#e4e6eb] font-medium rounded-lg transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={confirmResetFlags}
+                    disabled={isResettingFlags}
+                    className="flex-1 px-4 py-3 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isResettingFlags ? (
+                      <>
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
+                        />
+                        Resetting...
+                      </>
+                    ) : (
+                      "Reset to 0"
                     )}
                   </motion.button>
                 </div>

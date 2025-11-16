@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { createServiceClient } from "@/app/lib/supabase/service";
+import { isAdminEmail } from "@/app/lib/admin";
 
 export async function POST() {
   try {
@@ -19,9 +20,11 @@ export async function POST() {
 
     const supabase = createServiceClient();
 
+    const email = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || null;
+    const isAdmin = isAdminEmail(email || undefined);
     const { error } = await supabase
       .from("confessions_posts")
-      .update({ profile_picture: imageUrl, username: displayName })
+      .update({ profile_picture: imageUrl, username: displayName, is_admin: isAdmin })
       .eq("user_id", userId)
       .eq("user_type", "clerk");
 
@@ -29,7 +32,7 @@ export async function POST() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, imageUrl, displayName });
+    return NextResponse.json({ success: true, imageUrl, displayName, is_admin: isAdmin });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }

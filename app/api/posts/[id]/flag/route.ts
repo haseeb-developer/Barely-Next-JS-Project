@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/app/lib/supabase/server";
-import { auth } from "@clerk/nextjs/server";
+import { createServiceClient } from "@/app/lib/supabase/service";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { getAnonUserId } from "@/app/lib/anon-auth";
+import { isAdminEmail } from "@/app/lib/admin";
 
 // POST - Flag a post
 export async function POST(
@@ -156,6 +158,63 @@ export async function GET(
       { error: "Internal server error" },
       { status: 500 }
     );
+  }
+}
+
+// DELETE - Admin: reset all flags for a post (set count back to 0)
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const supabase = await createClient();
+    const supabaseAdmin = createServiceClient();
+    const { userId } = await auth();
+    const { id: postId } = await params;
+
+    if (!userId) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+
+    // Verify admin via Clerk currentUser() email (most reliable in-app)
+    let isAdmin = false;
+    try {
+      const u = await currentUser();
+      const email =
+        u?.primaryEmailAddress?.emailAddress ||
+        u?.emailAddresses?.[0]?.emailAddress ||
+        null;
+      if (email && isAdminEmail(email)) isAdmin = true;
+    } catch {}
+
+    if (!isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    // Ensure post exists
+    const { data: post, error: postError } = await supabase
+      .from("confessions_posts")
+      .select("id")
+      .eq("id", postId)
+      .maybeSingle();
+
+    if (postError || !post) {
+      return NextResponse.json({ error: "Post not found" }, { status: 404 });
+    }
+
+    // Delete all flags for this post
+    const { error: delErr } = await supabaseAdmin
+      .from("confessions_flags")
+      .delete()
+      .eq("post_id", postId);
+
+    if (delErr) {
+      console.error("Error resetting flags:", delErr);
+      return NextResponse.json({ error: "Failed to reset flags" }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, flagCount: 0 });
+  } catch (error) {
+    console.error("Error in reset flags API:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 

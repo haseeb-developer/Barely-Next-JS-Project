@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, UserPlus, User } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { SignUpButton, SignInButton } from "@clerk/nextjs";
+import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
 
 interface SignUpPromptModalProps {
   isOpen: boolean;
@@ -12,13 +14,15 @@ interface SignUpPromptModalProps {
 
 export function SignUpPromptModal({ isOpen, onClose }: SignUpPromptModalProps) {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const handleAnonSignUp = () => {
     onClose();
     router.push("/anon-account");
   };
 
-  return (
+  const modal = (
     <AnimatePresence>
       {isOpen && (
         <>
@@ -28,11 +32,11 @@ export function SignUpPromptModal({ isOpen, onClose }: SignUpPromptModalProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
           />
 
           {/* Modal */}
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none overflow-y-auto">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 pointer-events-none overflow-y-auto">
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -111,5 +115,8 @@ export function SignUpPromptModal({ isOpen, onClose }: SignUpPromptModalProps) {
       )}
     </AnimatePresence>
   );
+
+  if (!mounted) return null;
+  return createPortal(modal, document.body);
 }
 

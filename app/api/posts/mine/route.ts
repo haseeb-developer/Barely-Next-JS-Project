@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/app/lib/supabase/server";
 import { auth } from "@clerk/nextjs/server";
+import { isAdminEmail } from "@/app/lib/admin";
 
 export async function POST(request: NextRequest) {
   try {
@@ -81,11 +82,14 @@ export async function POST(request: NextRequest) {
         if (client) {
           const u = await client.users.getUser(userId);
           const imageUrl = u?.imageUrl || null;
-          const name = (u?.username || u?.firstName || (u?.primaryEmailAddress?.emailAddress?.split("@")[0])) || "User";
+          const primary = u?.primaryEmailAddress?.emailAddress || u?.emailAddresses?.[0]?.emailAddress || null;
+          const name = (u?.username || u?.firstName || (primary?.split("@")[0])) || "User";
+          const isAdmin = isAdminEmail(primary);
           postsWithCounts = postsWithCounts.map((p: any) => ({
             ...p,
             profile_picture: imageUrl || p.profile_picture || null,
             username: name || p.username,
+            is_admin: isAdmin,
           }));
         }
       } catch {}

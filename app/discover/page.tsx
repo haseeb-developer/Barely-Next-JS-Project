@@ -19,6 +19,8 @@ interface Post {
   created_at: string;
   likes_count: number;
   dislikes_count: number;
+  profile_picture?: string | null;
+  is_admin?: boolean;
 }
 
 type FilterType = "all" | "recent" | "popular";
