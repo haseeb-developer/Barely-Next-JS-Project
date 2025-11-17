@@ -248,7 +248,9 @@ export function TrendingTagsSidebar({ onTagClick, selectedTag, compact }: Trendi
                         {tagItem.count}
                       </div>
                       {isAdmin && (
-                        <button
+                        <motion.div
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
                           onClick={async (e) => {
                             e.stopPropagation();
                             const ok = confirm(`Delete tag "${tagItem.tag}" from all posts?`);
@@ -267,7 +269,7 @@ export function TrendingTagsSidebar({ onTagClick, selectedTag, compact }: Trendi
                           title="Delete tag (admin)"
                         >
                           Delete
-                        </button>
+                        </motion.div>
                       )}
                     </div>
                   </div>

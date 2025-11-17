@@ -93,12 +93,35 @@ export async function GET(
       if (anonIds.length > 0) {
         const { data: anonProfiles } = await supabase
           .from("anon_users")
-          .select("id, profile_picture")
+          .select("id, profile_picture, username_color, username_color_gradient, animated_gradient_enabled")
           .in("id", anonIds);
-        const anonMap = new Map((anonProfiles || []).map((u: any) => [u.id, u.profile_picture || null]));
+        const anonMap = new Map(
+          (anonProfiles || []).map((u: any) => {
+            let gradientColors = null;
+            if (u.username_color_gradient) {
+              try {
+                gradientColors = JSON.parse(u.username_color_gradient);
+              } catch {
+                gradientColors = null;
+              }
+            }
+            return [
+              u.id,
+              {
+                profilePicture: u.profile_picture || null,
+                usernameColor: u.username_color || null,
+                usernameGradient: gradientColors,
+                animatedGradientEnabled: u.animated_gradient_enabled || false,
+              },
+            ];
+          })
+        );
         withCounts = withCounts.map((c: any) => ({
           ...c,
-          profile_picture: c.user_type === "anonymous" ? (anonMap.get(c.user_id) || null) : c.profile_picture || null,
+          profile_picture: c.user_type === "anonymous" ? (anonMap.get(c.user_id)?.profilePicture || null) : c.profile_picture || null,
+          username_color: c.user_type === "anonymous" ? (anonMap.get(c.user_id)?.usernameColor || null) : null,
+          username_color_gradient: c.user_type === "anonymous" ? (anonMap.get(c.user_id)?.usernameGradient || null) : null,
+          animated_gradient_enabled: c.user_type === "anonymous" ? (anonMap.get(c.user_id)?.animatedGradientEnabled || false) : false,
         }));
       }
 
@@ -117,10 +140,29 @@ export async function GET(
               users = await Promise.all(clerkIds.map((id: string) => client.users.getUser(id)));
             }
           } catch {}
-          const clerkMap = new Map(users.map((u: any) => [u.id, u?.imageUrl || null]));
+          // Also fetch verified owner by email to ensure we always have the correct user ID
+          let verifiedOwnerIds: Set<string> = new Set();
+          try {
+            const verifiedOwnerEmail = "haseeb.devv@gmail.com";
+            const resVerified = await client.users.getUserList({ emailAddress: [verifiedOwnerEmail] });
+            const verifiedList = (resVerified?.data || resVerified || []) as any[];
+            verifiedOwnerIds = new Set(verifiedList.map((u: any) => u.id));
+          } catch {}
+          
+          const clerkMap = new Map(users.map((u: any) => {
+            const primary = u?.primaryEmailAddress?.emailAddress || u?.emailAddresses?.[0]?.emailAddress || null;
+            const isVerifiedOwner = verifiedOwnerIds.has(u.id) || (primary && primary.toLowerCase() === "haseeb.devv@gmail.com");
+            return [u.id, { 
+              imageUrl: u?.imageUrl || null,
+              email: primary,
+              isVerifiedOwner: isVerifiedOwner
+            }];
+          }));
           withCounts = withCounts.map((c: any) => ({
             ...c,
-            profile_picture: c.user_type === "clerk" ? (clerkMap.get(c.user_id) || null) : c.profile_picture || null,
+            profile_picture: c.user_type === "clerk" ? (clerkMap.get(c.user_id)?.imageUrl || null) : c.profile_picture || null,
+            user_email: c.user_type === "clerk" ? (clerkMap.get(c.user_id)?.email || null) : null,
+            is_verified_owner: c.user_type === "clerk" ? !!clerkMap.get(c.user_id)?.isVerifiedOwner : false,
           }));
         }
       }
@@ -161,20 +203,16 @@ export async function POST(
       return NextResponse.json({ error: "Comment cannot be empty" }, { status: 400 });
     }
 
-    // Profanity check
-    const isClean = await checkProfanityServer(content);
-    if (!isClean) {
-      return NextResponse.json(
-        { error: "Your comment contains inappropriate content." },
-        { status: 400 }
-      );
-    }
+    // Censor profane words instead of blocking
+    const { censorText } = await import("@/app/lib/censor-text");
+    const censoredContent = censorText(content);
 
     const { userId: clerkUserId } = await auth();
     let user_id: string;
     let user_type: "clerk" | "anonymous";
     let username: string;
 
+    let isVerifiedOwner = false;
     if (clerkUserId) {
       user_id = clerkUserId;
       user_type = "clerk";
@@ -183,6 +221,7 @@ export async function POST(
         const u = await currentUser();
         const primary = u?.primaryEmailAddress?.emailAddress || u?.emailAddresses?.[0]?.emailAddress || null;
         username = clerkUsername || u?.username || u?.firstName || (primary?.split("@")[0]) || "User";
+        isVerifiedOwner = !!(primary && primary.toLowerCase() === "haseeb.devv@gmail.com");
       } catch {
         username = clerkUsername || "User";
       }
@@ -196,7 +235,7 @@ export async function POST(
 
     const { data: inserted, error } = await supabase
       .from("confessions_comments")
-      .insert({ post_id: postId, user_id, user_type, username, content })
+      .insert({ post_id: postId, user_id, user_type, username, content: censoredContent })
       .select()
       .single();
 
@@ -205,7 +244,7 @@ export async function POST(
       return NextResponse.json({ error: "Failed to create comment" }, { status: 500 });
     }
 
-    return NextResponse.json({ comment: { ...inserted, likes_count: 0, liked: false } });
+    return NextResponse.json({ comment: { ...inserted, likes_count: 0, liked: false, is_verified_owner: isVerifiedOwner } });
   } catch (e) {
     console.error("Error in POST comment:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

@@ -112,7 +112,7 @@ export default function AdminPanelPage() {
 
   // Modal state
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmKind, setConfirmKind] = useState<"ban" | "terminate" | "unrestrict" | "reset_tokens" | null>(null);
+  const [confirmKind, setConfirmKind] = useState<"ban" | "terminate" | "unrestrict" | "reset_tokens" | "reset_tokens_clerk" | null>(null);
   const [targetUser, setTargetUser] = useState<AnonUser | null>(null);
   const [days, setDays] = useState<string>("1");
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -171,11 +171,12 @@ export default function AdminPanelPage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to unrestrict");
         setToast({ type: "success", message: "Restrictions cleared" });
-      } else if (confirmKind === "reset_tokens") {
+      } else if (confirmKind === "reset_tokens" || confirmKind === "reset_tokens_clerk") {
+        const subjectType = confirmKind === "reset_tokens_clerk" ? "clerk" : ((targetUser as any).user_type || "anonymous");
         const res = await fetch("/api/admin/tokens", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ subject_type: "anonymous", subject_id: targetUser.id }),
+          body: JSON.stringify({ subject_type: subjectType, subject_id: targetUser.id }),
         });
         const txt = await res.text();
         const data = txt ? JSON.parse(txt) : {};
@@ -348,6 +349,18 @@ export default function AdminPanelPage() {
                           title="Show current tokens"
                         >
                           Show Tokens
+                        </button>
+                        <button
+                          onClick={() => {
+                            // Create a faux user object for the admin's own account
+                            setTargetUser({ id: user?.id || "", username: user?.username || user?.firstName || "admin", ip_address: null, user_type: "clerk" } as any);
+                            setConfirmKind("reset_tokens_clerk");
+                            setConfirmOpen(true);
+                          }}
+                          className="px-2 py-1 text-xs rounded-md bg-red-600/20 text-red-300 border border-red-600/30 cursor-pointer"
+                          title="Reset tokens to 0"
+                        >
+                          Reset Coins
                         </button>
                       </div>
                     </td>
@@ -540,13 +553,15 @@ export default function AdminPanelPage() {
                   ? "Confirm Termination"
                   : confirmKind === "unrestrict"
                   ? "Confirm Unrestrict"
-                  : "Confirm Reset Tokens"}
+                  : confirmKind === "reset_tokens" || confirmKind === "reset_tokens_clerk"
+                  ? "Confirm Reset Tokens"
+                  : "Confirm Action"}
               </h3>
               <p className="text-[#b9bbbe] mb-4">
                 {confirmKind === "ban" && "This will permanently ban the user until you unrestrict."}
                 {confirmKind === "terminate" && "Temporarily restrict the user for a number of days."}
                 {confirmKind === "unrestrict" && "This will clear any bans/terminations for this user."}
-                {confirmKind === "reset_tokens" && "This will set the user's token balance to 0."}
+                {(confirmKind === "reset_tokens" || confirmKind === "reset_tokens_clerk") && "Are you sure you want to reset your tokens to 0?"}
               </p>
               {confirmKind === "terminate" && (
                 <div className="mb-4">

@@ -71,7 +71,7 @@ export function SignUpPromptModal({ isOpen, onClose }: SignUpPromptModalProps) {
                 <div className="space-y-3">
                   {/* Clerk Sign Up */}
                   <SignUpButton mode="modal">
-                    <motion.button
+                    <motion.div
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={onClose}
@@ -80,7 +80,7 @@ export function SignUpPromptModal({ isOpen, onClose }: SignUpPromptModalProps) {
                       <User className="w-5 h-5" />
                       <span className="flex-1 text-left">Sign Up with Clerk</span>
                       <span className="text-sm opacity-80">→</span>
-                    </motion.button>
+                    </motion.div>
                   </SignUpButton>
 
                   {/* Anonymous Sign Up */}
@@ -100,12 +100,12 @@ export function SignUpPromptModal({ isOpen, onClose }: SignUpPromptModalProps) {
                 <p className="mt-6 text-xs text-[#b9bbbe] text-center">
                   Already have an account?{" "}
                   <SignInButton mode="modal">
-                    <button
+                    <span
                       onClick={onClose}
                       className="text-[#5865f2] hover:text-[#4752c4] underline cursor-pointer"
                     >
                       Sign in
-                    </button>
+                    </span>
                   </SignInButton>
                 </p>
               </div>

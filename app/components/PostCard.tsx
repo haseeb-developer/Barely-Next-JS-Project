@@ -2,16 +2,47 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ThumbsUp, ThumbsDown, Trash2, User, Hash, AlertTriangle, Flag, MessageSquare } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Trash2, User, Hash, AlertTriangle, Flag, MessageSquare, Bookmark } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { getAnonUserId, getAnonUsername } from "@/app/lib/anon-auth";
 import toast from "react-hot-toast";
-import { checkProfanity } from "@/app/lib/profanity-check";
 import Image from "next/image";
 import { ClerkProfileImage } from "./ClerkProfileImage";
 import { isAdminEmail } from "@/app/lib/admin";
 import { ReactionsBar } from "./ReactionsBar";
 import { EmojiPickerPopover } from "./EmojiPickerPopover";
+
+// Add CSS animation for smooth gradient movement in all directions
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes gradientMove {
+      0% {
+        background-position: 0% 50%;
+      }
+      25% {
+        background-position: 100% 0%;
+      }
+      50% {
+        background-position: 100% 100%;
+      }
+      75% {
+        background-position: 0% 100%;
+      }
+      100% {
+        background-position: 0% 50%;
+      }
+    }
+    .animated-gradient-text {
+      animation: gradientMove 8s ease-in-out infinite;
+      background-size: 300% 300%;
+    }
+  `;
+  if (!document.head.querySelector('style[data-gradient-animation]')) {
+    style.setAttribute('data-gradient-animation', 'true');
+    document.head.appendChild(style);
+  }
+}
 
 interface Post {
   id: string;
@@ -26,6 +57,16 @@ interface Post {
   profile_picture?: string | null;
   is_admin?: boolean;
   tags?: string[];
+  username_color?: string | null;
+  username_color_gradient?: string[] | null;
+  animated_gradient_enabled?: boolean;
+  gif_profile_enabled?: boolean;
+  user_email?: string | null;
+  is_verified_owner?: boolean;
+  saved?: boolean;
+  liked?: boolean;
+  disliked?: boolean;
+  saveCount?: number | null;
 }
 
 interface PostCardProps {
@@ -34,10 +75,17 @@ interface PostCardProps {
 }
 
 export function PostCard({ post, onDelete }: PostCardProps) {
+  // Debug: Log verified owner status
+  useEffect(() => {
+    if (post.is_verified_owner) {
+      console.log(`[Verified Badge Frontend] Post ${post.id} by ${post.user_id} has is_verified_owner:`, post.is_verified_owner);
+    }
+  }, [post.id, post.is_verified_owner, post.user_id]);
+  
   const [likesCount, setLikesCount] = useState(post.likes_count || 0);
   const [dislikesCount, setDislikesCount] = useState(post.dislikes_count || 0);
-  const [isLiked, setIsLiked] = useState(false);
-  const [isDisliked, setIsDisliked] = useState(false);
+  const [isLiked, setIsLiked] = useState(post.liked || false);
+  const [isDisliked, setIsDisliked] = useState(post.disliked || false);
   const [isFlagged, setIsFlagged] = useState(false);
   const [flagsCount, setFlagsCount] = useState(post.flags_count || 0);
   const [profilePicture, setProfilePicture] = useState<string | null>(post.profile_picture || null);
@@ -48,7 +96,7 @@ export function PostCard({ post, onDelete }: PostCardProps) {
   const [isResettingFlags, setIsResettingFlags] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showComments, setShowComments] = useState(false);
-  const [comments, setComments] = useState<Array<{id:string; content:string; username:string; created_at:string; likes_count:number; liked:boolean; profile_picture?: string | null; user_id?: string; user_type?: "clerk" | "anonymous"}>>([]);
+  const [comments, setComments] = useState<Array<{id:string; content:string; username:string; created_at:string; likes_count:number; liked:boolean; profile_picture?: string | null; user_id?: string; user_type?: "clerk" | "anonymous"; username_color?: string | null; username_color_gradient?: string[] | null; animated_gradient_enabled?: boolean; user_email?: string | null; is_verified_owner?: boolean}>>([]);
   const [newComment, setNewComment] = useState("");
   const [isPostingComment, setIsPostingComment] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
@@ -61,6 +109,9 @@ export function PostCard({ post, onDelete }: PostCardProps) {
   const [postReactionsTotals, setPostReactionsTotals] = useState<Record<string, number>>({});
   const [postUserReactions, setPostUserReactions] = useState<string[]>([]);
   const [showPostEmojiPicker, setShowPostEmojiPicker] = useState(false);
+  const [isSaved, setIsSaved] = useState(post.saved || false);
+  const [saveCount, setSaveCount] = useState<number | null>(post.saveCount ?? null);
+  const [isTogglingBookmark, setIsTogglingBookmark] = useState(false);
 
   // helper to safely read JSON (avoids Unexpected token '<' on HTML error pages)
   const readJsonSafe = async (res: Response) => {
@@ -102,20 +153,20 @@ export function PostCard({ post, onDelete }: PostCardProps) {
   const isAdmin = isAdminEmail(currentEmail);
   const canDelete = isAdmin || currentUserId === post.user_id;
 
-  // Check user's reaction and flag status on mount
+  // Sync state from post prop when it changes (for saved/liked status from API)
   useEffect(() => {
-    const checkReaction = async () => {
+    setIsLiked(post.liked || false);
+    setIsDisliked(post.disliked || false);
+    setIsSaved(post.saved || false);
+    setSaveCount(post.saveCount ?? null);
+  }, [post.liked, post.disliked, post.saved, post.saveCount]);
+
+  // Check user's flag status on mount (bookmark/like status comes from post object)
+  useEffect(() => {
+    const checkFlag = async () => {
       if (!currentUserId) return;
 
       try {
-        // Check reaction (relative URL avoids window.origin issues)
-        const reactionPath = `/api/posts/${post.id}/user-reaction${anonUserId ? `?anonUserId=${encodeURIComponent(anonUserId)}` : ""}`;
-        const response = await fetch(reactionPath);
-        const data = await response.json();
-
-        setIsLiked(data.liked || false);
-        setIsDisliked(data.disliked || false);
-
         // Check flag status
         const flagPath = `/api/posts/${post.id}/flag${anonUserId ? `?anonUserId=${encodeURIComponent(anonUserId)}` : ""}`;
         const flagResponse = await fetch(flagPath);
@@ -124,11 +175,11 @@ export function PostCard({ post, onDelete }: PostCardProps) {
         setIsFlagged(flagData.hasFlagged || false);
         setFlagsCount(flagData.flagCount || 0);
       } catch (error) {
-        console.error("Error checking reaction:", error);
+        console.error("Error checking flag:", error);
       }
     };
 
-    checkReaction();
+    checkFlag();
   }, [post.id, currentUserId, anonUserId]);
 
   const loadComments = async () => {
@@ -147,6 +198,11 @@ export function PostCard({ post, onDelete }: PostCardProps) {
         profile_picture: c.profile_picture || null,
         user_id: c.user_id,
         user_type: c.user_type,
+        username_color: c.username_color || null,
+        username_color_gradient: c.username_color_gradient || null,
+        animated_gradient_enabled: c.animated_gradient_enabled || false,
+        user_email: c.user_email || null,
+        is_verified_owner: c.is_verified_owner || false,
       }));
       setComments(newComments);
       setCommentCount(typeof data.totalCount === "number" ? data.totalCount : newComments.length);
@@ -242,46 +298,10 @@ export function PostCard({ post, onDelete }: PostCardProps) {
     };
   }, []);
 
-  // Debounced client-side profanity check for comments
+  // Remove profanity checking - comments will be auto-censored on the server instead
   useEffect(() => {
-    let id: any;
-    const run = async () => {
-      const text = newComment.trim();
-      if (!text) {
-        setCommentError(null);
-        return;
-      }
-      setIsCheckingComment(true);
-      try {
-        // quick local detection first
-        const normalize = (s: string) =>
-          s
-            .toLowerCase()
-            .replace(/[@]/g, "a")
-            .replace(/[0]/g, "o")
-            .replace(/[1!]/g, "i")
-            .replace(/\$/g, "s")
-            .replace(/3/g, "e");
-        const n = normalize(text);
-        const words = ["fuck", "shit", "bitch", "asshole", "bastard", "cunt", "dick", "pussy", "slut"];
-        const badLocal = words.some((w) => new RegExp(`\\b${w}\\b`, "i").test(n));
-
-        let badRemote = false;
-        try {
-          badRemote = await checkProfanity(text);
-        } catch {}
-
-        const bad = badLocal || badRemote;
-        setCommentError(bad ? "Comment contains prohibited words. Please revise and try again." : null);
-      } catch {
-        // fail open
-        setCommentError(null);
-      } finally {
-        setIsCheckingComment(false);
-      }
-    };
-    id = setTimeout(run, 300);
-    return () => clearTimeout(id);
+    setCommentError(null);
+    setIsCheckingComment(false);
   }, [newComment]);
 
   // Load initial comments count (summary)
@@ -294,6 +314,51 @@ export function PostCard({ post, onDelete }: PostCardProps) {
       } catch {}
     })();
   }, [post.id]);
+
+  const toggleBookmark = async () => {
+    if (!currentUserId) {
+      toast.error("Please sign in to save posts");
+      return;
+    }
+
+    if (isTogglingBookmark) return;
+    setIsTogglingBookmark(true);
+
+    try {
+      const response = await fetch(`/api/posts/${post.id}/bookmark`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          anonUserId: anonUserId || null,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to toggle bookmark");
+      }
+
+      setIsSaved(data.saved);
+      if (data.saveCount !== undefined) {
+        setSaveCount(data.saveCount);
+      }
+      
+      // Dispatch event to remove from saved tab if unsaved
+      if (!data.saved) {
+        window.dispatchEvent(new CustomEvent("postUnsaved", { detail: { postId: post.id } }));
+      }
+      
+      toast.success(data.saved ? "Post saved" : "Post unsaved");
+    } catch (error: any) {
+      console.error("Error toggling bookmark:", error);
+      toast.error(error.message || "Failed to toggle bookmark");
+    } finally {
+      setIsTogglingBookmark(false);
+    }
+  };
 
   const handleLike = async () => {
     if (!currentUserId) {
@@ -336,6 +401,8 @@ export function PostCard({ post, onDelete }: PostCardProps) {
         // User unliked
         setLikesCount((prev) => Math.max(0, prev - 1));
         setIsLiked(false);
+        // Dispatch event to remove from liked tab
+        window.dispatchEvent(new CustomEvent("postUnliked", { detail: { postId: post.id } }));
       }
     } catch (error: any) {
       console.error("Error liking post:", error);
@@ -527,7 +594,6 @@ export function PostCard({ post, onDelete }: PostCardProps) {
     }
     const val = newComment.trim();
     if (!val) return;
-    if (commentError || isCheckingComment) return;
     setIsPostingComment(true);
     try {
       const res = await fetch(`/api/posts/${post.id}/comments`, {
@@ -549,11 +615,7 @@ export function PostCard({ post, onDelete }: PostCardProps) {
     } catch (e: any) {
       console.error(e);
       const msg = e?.message || "Failed to post comment";
-      if (typeof msg === "string" && msg.toLowerCase().includes("inappropriate")) {
-        setCommentError("Comment contains prohibited words. Please revise and try again.");
-      } else {
-        toast.error(msg);
-      }
+      toast.error(msg);
     } finally {
       setIsPostingComment(false);
     }
@@ -590,24 +652,40 @@ export function PostCard({ post, onDelete }: PostCardProps) {
           {/* Profile Picture */}
           {post.profile_picture ? (
             <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-[#5865f2] bg-[#1a1b23]">
-              <Image
-                src={post.profile_picture}
-                alt={post.username}
-                width={40}
-                height={40}
-                className="w-full h-full object-cover"
-              />
+              {post.gif_profile_enabled || post.profile_picture.startsWith("data:image/gif") ? (
+                <img
+                  src={post.profile_picture}
+                  alt={post.username}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <Image
+                  src={post.profile_picture}
+                  alt={post.username}
+                  width={40}
+                  height={40}
+                  className="w-full h-full object-cover"
+                />
+              )}
             </div>
           ) : profilePicture ? (
             // Anonymous user with profile picture
             <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-[#5865f2] bg-[#1a1b23]">
-              <Image
-                src={profilePicture}
-                alt={post.username}
-                width={40}
-                height={40}
-                className="w-full h-full object-cover"
-              />
+              {post.gif_profile_enabled || profilePicture.startsWith("data:image/gif") ? (
+                <img
+                  src={profilePicture}
+                  alt={post.username}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <Image
+                  src={profilePicture}
+                  alt={post.username}
+                  width={40}
+                  height={40}
+                  className="w-full h-full object-cover"
+                />
+              )}
             </div>
           ) : (
             // Anonymous user without profile picture
@@ -617,8 +695,43 @@ export function PostCard({ post, onDelete }: PostCardProps) {
           )}
           <div>
             <p className="text-sm font-medium text-[#e4e6eb] flex items-center gap-2">
-              By {post.username}
-              {(post.is_admin || (isAdmin && post.user_id === currentUserId)) && (
+              By{" "}
+              <span
+                className={post.animated_gradient_enabled && post.username_color_gradient && post.username_color_gradient.length >= 2 ? 'animated-gradient-text' : ''}
+                style={{
+                  color: post.username_color || undefined,
+                  backgroundImage: post.username_color_gradient
+                    ? (() => {
+                        const colors = post.username_color_gradient!;
+                        if (post.animated_gradient_enabled && colors.length >= 2) {
+                          // Create complex gradient for multi-directional animation with color mixing
+                          if (colors.length === 2) {
+                            return `linear-gradient(135deg, ${colors[0]} 0%, ${colors[1]} 20%, ${colors[0]} 40%, ${colors[1]} 60%, ${colors[0]} 80%, ${colors[1]} 100%)`;
+                          } else if (colors.length === 3) {
+                            return `linear-gradient(135deg, ${colors[0]} 0%, ${colors[1]} 16.66%, ${colors[2]} 33.33%, ${colors[0]} 50%, ${colors[1]} 66.66%, ${colors[2]} 83.33%, ${colors[0]} 100%)`;
+                          } else {
+                            const extendedColors = [...colors, ...colors, ...colors.slice(0, Math.ceil(colors.length / 2))];
+                            const gradientStops = extendedColors.map((color, idx) => 
+                              `${color} ${(idx / (extendedColors.length - 1)) * 100}%`
+                            ).join(", ");
+                            return `linear-gradient(135deg, ${gradientStops})`;
+                          }
+                        } else if (colors.length === 2) {
+                          return `linear-gradient(90deg, ${colors[0]}, ${colors[1]})`;
+                        } else {
+                          return `linear-gradient(90deg, ${colors[0]}, ${colors[1]}, ${colors[2]})`;
+                        }
+                      })()
+                    : undefined,
+                  backgroundSize: post.animated_gradient_enabled && post.username_color_gradient && post.username_color_gradient.length >= 2 ? '300% 300%' : '100% 100%',
+                  WebkitBackgroundClip: post.username_color_gradient ? "text" : undefined,
+                  WebkitTextFillColor: post.username_color_gradient ? "transparent" : undefined,
+                  backgroundClip: post.username_color_gradient ? "text" : undefined,
+                }}
+              >
+                {post.username}
+              </span>
+              {((post.is_admin || (isAdmin && post.user_id === currentUserId)) || (post.is_verified_owner === true)) && (
                 <span className="relative inline-flex group">
                   <svg viewBox="0 0 22 22" aria-label="Verified account" role="img" className="w-4 h-4 text-blue-400 cursor-pointer" data-testid="icon-verified">
                     <g><path d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z" fill="currentColor"></path></g>
@@ -632,25 +745,58 @@ export function PostCard({ post, onDelete }: PostCardProps) {
             <p className="text-xs text-[#b9bbbe]">{formatDate(post.created_at)}</p>
           </div>
         </div>
-        {canDelete && (
-          <motion.button
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            onClick={handleDelete}
-            disabled={isDeleting}
-            className="p-2 rounded-lg hover:bg-red-500/20 text-red-400 transition-colors disabled:opacity-50 cursor-pointer"
-          >
-            {isDeleting ? (
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full"
-              />
-            ) : (
-              <Trash2 className="w-4 h-4" />
-            )}
-          </motion.button>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Bookmark Button */}
+          {currentUserId && (
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={toggleBookmark}
+              disabled={isTogglingBookmark}
+              className={`p-2 rounded-lg transition-colors disabled:opacity-50 cursor-pointer ${
+                isSaved
+                  ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30"
+                  : "hover:bg-[#2d2f36] text-[#b9bbbe]"
+              }`}
+              title={isSaved ? "Unsave post" : "Save post"}
+            >
+              {isTogglingBookmark ? (
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="w-4 h-4 border-2 border-current border-t-transparent rounded-full"
+                />
+              ) : (
+                <Bookmark className={`w-4 h-4 ${isSaved ? "fill-current" : ""}`} />
+              )}
+            </motion.button>
+          )}
+          {/* Save Count (only visible to post author) */}
+          {currentUserId === post.user_id && saveCount !== null && saveCount > 0 && (
+            <span className="text-xs text-[#9aa0a6] px-2">
+              {saveCount} {saveCount === 1 ? "save" : "saves"}
+            </span>
+          )}
+          {canDelete && (
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="p-2 rounded-lg hover:bg-red-500/20 text-red-400 transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              {isDeleting ? (
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full"
+                />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+            </motion.button>
+          )}
+        </div>
       </div>
       {/* Client profanity check for comment composer */}
       <>
@@ -776,9 +922,7 @@ export function PostCard({ post, onDelete }: PostCardProps) {
               onChange={(e) => setNewComment(e.target.value)}
               placeholder="Write a comment..."
               rows={2}
-              className={`flex-1 px-3 py-2 bg-[#1a1b23] rounded-lg text-[#e4e6eb] placeholder-[#9aa0a6] focus:outline-none focus:ring-2 ${
-                commentError ? "border border-red-500 focus:ring-red-500" : "border border-[#3d3f47] focus:ring-[#5865f2]"
-              }`}
+              className="flex-1 px-3 py-2 bg-[#1a1b23] rounded-lg text-[#e4e6eb] placeholder-[#9aa0a6] focus:outline-none focus:ring-2 border border-[#3d3f47] focus:ring-[#5865f2]"
             />
             <motion.button
               whileHover={{ scale: isPostingComment ? 1 : 1.03 }}
@@ -803,12 +947,6 @@ export function PostCard({ post, onDelete }: PostCardProps) {
               </button>
             ))}
           </div>
-          {isCheckingComment && (
-            <div className="mt-1 text-xs text-[#b9bbbe]">Checking content...</div>
-          )}
-          {commentError && (
-            <div className="mt-1 text-xs text-red-400">{commentError}</div>
-          )}
 
           <div className="mt-3 space-y-3">
             {comments.map((c, idx) => (
@@ -835,7 +973,53 @@ export function PostCard({ post, onDelete }: PostCardProps) {
                       )}
                     </div>
                     <span className="text-sm font-semibold text-[#e4e6eb] truncate">
-                      By {c.username}{" "}
+                      By{" "}
+                      <span
+                        className={c.animated_gradient_enabled && c.username_color_gradient && c.username_color_gradient.length >= 2 ? 'animated-gradient-text' : ''}
+                        style={{
+                          color: c.username_color || undefined,
+                          backgroundImage: c.username_color_gradient
+                            ? (() => {
+                                const colors = c.username_color_gradient!;
+                                if (c.animated_gradient_enabled && colors.length >= 2) {
+                                  // Create complex gradient for multi-directional animation with color mixing
+                                  if (colors.length === 2) {
+                                    return `linear-gradient(135deg, ${colors[0]} 0%, ${colors[1]} 20%, ${colors[0]} 40%, ${colors[1]} 60%, ${colors[0]} 80%, ${colors[1]} 100%)`;
+                                  } else if (colors.length === 3) {
+                                    return `linear-gradient(135deg, ${colors[0]} 0%, ${colors[1]} 16.66%, ${colors[2]} 33.33%, ${colors[0]} 50%, ${colors[1]} 66.66%, ${colors[2]} 83.33%, ${colors[0]} 100%)`;
+                                  } else {
+                                    const extendedColors = [...colors, ...colors, ...colors.slice(0, Math.ceil(colors.length / 2))];
+                                    const gradientStops = extendedColors.map((color, idx) => 
+                                      `${color} ${(idx / (extendedColors.length - 1)) * 100}%`
+                                    ).join(", ");
+                                    return `linear-gradient(135deg, ${gradientStops})`;
+                                  }
+                                } else if (colors.length === 2) {
+                                  return `linear-gradient(90deg, ${colors[0]}, ${colors[1]})`;
+                                } else {
+                                  return `linear-gradient(90deg, ${colors[0]}, ${colors[1]}, ${colors[2]})`;
+                                }
+                              })()
+                            : undefined,
+                          backgroundSize: c.animated_gradient_enabled && c.username_color_gradient && c.username_color_gradient.length >= 2 ? '300% 300%' : '100% 100%',
+                          WebkitBackgroundClip: c.username_color_gradient ? "text" : undefined,
+                          WebkitTextFillColor: c.username_color_gradient ? "transparent" : undefined,
+                          backgroundClip: c.username_color_gradient ? "text" : undefined,
+                        }}
+                      >
+                        {c.username}
+                      </span>
+                      {c.is_verified_owner && (
+                        <span className="relative inline-flex group ml-1">
+                          <svg viewBox="0 0 22 22" aria-label="Verified account" role="img" className="w-4 h-4 text-blue-400 cursor-pointer" data-testid="icon-verified">
+                            <g><path d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z" fill="currentColor"></path></g>
+                          </svg>
+                          <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-8 hidden group-hover:block bg-[#111318] text-white text-xs px-2 py-1 rounded-md border border-[#3d3f47] whitespace-nowrap shadow-lg">
+                            Verified Developer | Creator
+                          </span>
+                        </span>
+                      )}
+                      {" "}
                       <span className="text-xs font-normal text-[#9aa0a6]">({formatDate(c.created_at)})</span>
                     </span>
                   </div>
@@ -939,9 +1123,7 @@ export function PostCard({ post, onDelete }: PostCardProps) {
                     onChange={(e) => setNewComment(e.target.value)}
                     placeholder="Write a comment..."
                     rows={2}
-                    className={`flex-1 px-3 py-2 bg-[#1a1b23] rounded-lg text-[#e4e6eb] placeholder-[#9aa0a6] focus:outline-none resize-y max-h-32 min-h-[40px] focus:ring-2 ${
-                      commentError ? "border border-red-500 focus:ring-red-500" : "border border-[#3d3f47] focus:ring-[#5865f2]"
-                    }`}
+                    className="flex-1 px-3 py-2 bg-[#1a1b23] rounded-lg text-[#e4e6eb] placeholder-[#9aa0a6] focus:outline-none resize-y max-h-32 min-h-[40px] focus:ring-2 border border-[#3d3f47] focus:ring-[#5865f2]"
                   />
                   <motion.button
                     whileHover={{ scale: isPostingComment ? 1 : 1.03 }}
@@ -966,12 +1148,6 @@ export function PostCard({ post, onDelete }: PostCardProps) {
                     </button>
                   ))}
                 </div>
-                {isCheckingComment && (
-                  <div className="mb-2 text-xs text-[#b9bbbe]">Checking content...</div>
-                )}
-                {commentError && (
-                  <div className="mb-2 text-xs text-red-400">{commentError}</div>
-                )}
 
                 {isLoadingComments ? (
                   <div className="flex items-center justify-center py-10">
@@ -1001,7 +1177,47 @@ export function PostCard({ post, onDelete }: PostCardProps) {
                             )}
                           </div>
                           <span className="text-sm font-semibold text-[#e4e6eb] truncate">
-                            By {c.username} <span className="text-xs font-normal text-[#9aa0a6]">({formatDate(c.created_at)})</span>
+                            By{" "}
+                            <span
+                              className={c.animated_gradient_enabled && c.username_color_gradient && c.username_color_gradient.length >= 2 ? 'animated-gradient-text' : ''}
+                              style={{
+                                color: c.username_color || undefined,
+                                backgroundImage: c.username_color_gradient
+                                  ? (() => {
+                                      const colors = c.username_color_gradient!;
+                                      if (c.animated_gradient_enabled && colors.length >= 2) {
+                                        const extendedColors = [...colors, ...colors];
+                                        const gradientStops = extendedColors.map((color, idx) => 
+                                          `${color} ${(idx / (extendedColors.length - 1)) * 100}%`
+                                        ).join(", ");
+                                        return `linear-gradient(90deg, ${gradientStops})`;
+                                      } else if (colors.length === 2) {
+                                        return `linear-gradient(90deg, ${colors[0]}, ${colors[1]})`;
+                                      } else {
+                                        return `linear-gradient(90deg, ${colors[0]}, ${colors[1]}, ${colors[2]})`;
+                                      }
+                                    })()
+                                  : undefined,
+                                backgroundSize: c.animated_gradient_enabled && c.username_color_gradient && c.username_color_gradient.length >= 2 ? '200% 100%' : '100% 100%',
+                                WebkitBackgroundClip: c.username_color_gradient ? "text" : undefined,
+                                WebkitTextFillColor: c.username_color_gradient ? "transparent" : undefined,
+                                backgroundClip: c.username_color_gradient ? "text" : undefined,
+                              }}
+                            >
+                              {c.username}
+                            </span>
+                            {c.is_verified_owner && (
+                              <span className="relative inline-flex group ml-1">
+                                <svg viewBox="0 0 22 22" aria-label="Verified account" role="img" className="w-4 h-4 text-blue-400 cursor-pointer" data-testid="icon-verified">
+                                  <g><path d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z" fill="currentColor"></path></g>
+                                </svg>
+                                <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-8 hidden group-hover:block bg-[#111318] text-white text-xs px-2 py-1 rounded-md border border-[#3d3f47] whitespace-nowrap shadow-lg">
+                                  Verified Developer | Creator
+                                </span>
+                              </span>
+                            )}
+                            {" "}
+                            <span className="text-xs font-normal text-[#9aa0a6]">({formatDate(c.created_at)})</span>
                           </span>
                         </div>
                         <div className="flex items-center gap-2">

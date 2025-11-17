@@ -22,6 +22,38 @@ import { SignUpPromptModal } from "./SignUpPromptModal";
 import Image from "next/image";
 import { User } from "lucide-react";
 
+// Add CSS animation for smooth gradient movement in all directions
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes gradientMove {
+      0% {
+        background-position: 0% 50%;
+      }
+      25% {
+        background-position: 100% 0%;
+      }
+      50% {
+        background-position: 100% 100%;
+      }
+      75% {
+        background-position: 0% 100%;
+      }
+      100% {
+        background-position: 0% 50%;
+      }
+    }
+    .animated-gradient-text {
+      animation: gradientMove 8s ease-in-out infinite;
+      background-size: 300% 300%;
+    }
+  `;
+  if (!document.head.querySelector('style[data-gradient-animation]')) {
+    style.setAttribute('data-gradient-animation', 'true');
+    document.head.appendChild(style);
+  }
+}
+
 interface HeaderProps {
   pacificoClassName: string;
 }
@@ -32,6 +64,10 @@ export function Header({ pacificoClassName }: HeaderProps) {
   const [anonUserEmail, setAnonUserEmail] = useState<string | null>(null);
   const [anonUsername, setAnonUsername] = useState<string | null>(null);
   const [anonProfilePicture, setAnonProfilePicture] = useState<string | null>(null);
+  const [anonUsernameColor, setAnonUsernameColor] = useState<string | null>(null);
+  const [anonUsernameGradient, setAnonUsernameGradient] = useState<string[] | null>(null);
+  const [anonAnimatedGradient, setAnonAnimatedGradient] = useState<boolean>(false);
+  const [anonGifProfileEnabled, setAnonGifProfileEnabled] = useState<boolean>(false);
   const [showSignUpModal, setShowSignUpModal] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
@@ -50,22 +86,45 @@ export function Header({ pacificoClassName }: HeaderProps) {
     setAnonUserEmail(email);
     setAnonUsername(username);
 
-    // Fetch profile picture for anonymous user
+    // Fetch profile picture and username customizations for anonymous user
     if (userId) {
+      // Fetch profile picture
       fetch(`/api/users/profile-picture?anonUserId=${userId}`)
         .then(res => res.json())
         .then(data => {
           if (data.profilePicture) {
             setAnonProfilePicture(data.profilePicture);
+          } else {
+            setAnonProfilePicture(null);
+          }
+          if (data.gifProfileEnabled !== undefined) {
+            setAnonGifProfileEnabled(data.gifProfileEnabled);
+          }
+        })
+        .catch(console.error);
+
+      // Fetch username color and gradient
+      fetch(`/api/users/username-color?anonUserId=${userId}`)
+        .then(res => {
+          if (res.ok) {
+            return res.json().then(data => {
+              setAnonUsernameColor(data.username_color || null);
+              setAnonUsernameGradient(data.username_color_gradient || null);
+              setAnonAnimatedGradient(data.animated_gradient_enabled || false);
+            });
           }
         })
         .catch(console.error);
     } else {
       setAnonProfilePicture(null);
+      setAnonUsernameColor(null);
+      setAnonUsernameGradient(null);
+      setAnonAnimatedGradient(false);
+      setAnonGifProfileEnabled(false);
     }
   }, [pathname]);
 
-  // Listen for profile picture updates
+  // Listen for profile picture and username color updates
   useEffect(() => {
     const handleProfilePictureUpdate = () => {
       if (anonUserId) {
@@ -77,14 +136,35 @@ export function Header({ pacificoClassName }: HeaderProps) {
             } else {
               setAnonProfilePicture(null);
             }
+            if (data.gif_profile_enabled !== undefined) {
+              setAnonGifProfileEnabled(data.gif_profile_enabled);
+            }
+          })
+          .catch(console.error);
+      }
+    };
+
+    const handleUsernameColorUpdate = () => {
+      if (anonUserId) {
+        fetch(`/api/users/username-color?anonUserId=${anonUserId}`)
+          .then(res => {
+            if (res.ok) {
+              return res.json().then(data => {
+                setAnonUsernameColor(data.username_color || null);
+                setAnonUsernameGradient(data.username_color_gradient || null);
+                setAnonAnimatedGradient(data.animated_gradient_enabled || false);
+              });
+            }
           })
           .catch(console.error);
       }
     };
 
     window.addEventListener("profilePictureUpdated", handleProfilePictureUpdate);
+    window.addEventListener("usernameColorUpdated", handleUsernameColorUpdate);
     return () => {
       window.removeEventListener("profilePictureUpdated", handleProfilePictureUpdate);
+      window.removeEventListener("usernameColorUpdated", handleUsernameColorUpdate);
     };
   }, [anonUserId]);
 
@@ -259,20 +339,60 @@ export function Header({ pacificoClassName }: HeaderProps) {
                     {/* Profile Picture */}
                     {anonProfilePicture ? (
                       <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-[#5865f2] bg-[#1a1b23] flex-shrink-0">
-                        <Image
-                          src={anonProfilePicture}
-                          alt={anonUsername || "Anonymous"}
-                          width={32}
-                          height={32}
-                          className="w-full h-full object-cover"
-                        />
+                        {anonGifProfileEnabled && anonProfilePicture.startsWith('data:image/gif') ? (
+                          <img
+                            src={anonProfilePicture}
+                            alt={anonUsername || "Anonymous"}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <Image
+                            src={anonProfilePicture}
+                            alt={anonUsername || "Anonymous"}
+                            width={32}
+                            height={32}
+                            className="w-full h-full object-cover"
+                          />
+                        )}
                       </div>
                     ) : (
                       <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#5865f2] to-[#4752c4] flex items-center justify-center flex-shrink-0">
                         <User className="w-4 h-4 text-white" />
                       </div>
                     )}
-                    <span className="text-sm text-[#b9bbbe]">
+                    <span
+                      className={`text-sm ${anonAnimatedGradient && anonUsernameGradient && anonUsernameGradient.length >= 2 ? 'animated-gradient-text' : ''}`}
+                      style={{
+                        color: anonUsernameColor || undefined,
+                        backgroundImage: anonUsernameGradient
+                          ? (() => {
+                              const colors = anonUsernameGradient;
+                              if (anonAnimatedGradient && colors.length >= 2) {
+                                // Create complex gradient for multi-directional animation with color mixing
+                                if (colors.length === 2) {
+                                  return `linear-gradient(135deg, ${colors[0]} 0%, ${colors[1]} 20%, ${colors[0]} 40%, ${colors[1]} 60%, ${colors[0]} 80%, ${colors[1]} 100%)`;
+                                } else if (colors.length === 3) {
+                                  return `linear-gradient(135deg, ${colors[0]} 0%, ${colors[1]} 16.66%, ${colors[2]} 33.33%, ${colors[0]} 50%, ${colors[1]} 66.66%, ${colors[2]} 83.33%, ${colors[0]} 100%)`;
+                                } else {
+                                  const extendedColors = [...colors, ...colors, ...colors.slice(0, Math.ceil(colors.length / 2))];
+                                  const gradientStops = extendedColors.map((color, idx) => 
+                                    `${color} ${(idx / (extendedColors.length - 1)) * 100}%`
+                                  ).join(", ");
+                                  return `linear-gradient(135deg, ${gradientStops})`;
+                                }
+                              } else if (colors.length === 2) {
+                                return `linear-gradient(90deg, ${colors[0]}, ${colors[1]})`;
+                              } else {
+                                return `linear-gradient(90deg, ${colors[0]}, ${colors[1]}, ${colors[2]})`;
+                              }
+                            })()
+                          : undefined,
+                        backgroundSize: anonAnimatedGradient && anonUsernameGradient && anonUsernameGradient.length >= 2 ? '300% 300%' : '100% 100%',
+                        WebkitBackgroundClip: anonUsernameGradient ? "text" : undefined,
+                        WebkitTextFillColor: anonUsernameGradient ? "transparent" : undefined,
+                        backgroundClip: anonUsernameGradient ? "text" : undefined,
+                      }}
+                    >
                       {anonUsername || anonUserEmail || "Anonymous User"}
                     </span>
                     <AccountDropdown
@@ -668,20 +788,60 @@ export function Header({ pacificoClassName }: HeaderProps) {
                           {/* Profile Picture */}
                           {anonProfilePicture ? (
                             <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-[#5865f2] bg-[#1a1b23] flex-shrink-0">
-                              <Image
-                                src={anonProfilePicture}
-                                alt={anonUsername || "Anonymous"}
-                                width={32}
-                                height={32}
-                                className="w-full h-full object-cover"
-                              />
+                              {anonGifProfileEnabled && anonProfilePicture.startsWith('data:image/gif') ? (
+                                <img
+                                  src={anonProfilePicture}
+                                  alt={anonUsername || "Anonymous"}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <Image
+                                  src={anonProfilePicture}
+                                  alt={anonUsername || "Anonymous"}
+                                  width={32}
+                                  height={32}
+                                  className="w-full h-full object-cover"
+                                />
+                              )}
                             </div>
                           ) : (
                             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#5865f2] to-[#4752c4] flex items-center justify-center flex-shrink-0">
                               <User className="w-4 h-4 text-white" />
                             </div>
                           )}
-                          <span className="text-sm text-[#b9bbbe]">
+                          <span
+                            className={`text-sm ${anonAnimatedGradient && anonUsernameGradient && anonUsernameGradient.length >= 2 ? 'animated-gradient-text' : ''}`}
+                            style={{
+                              color: anonUsernameColor || undefined,
+                              backgroundImage: anonUsernameGradient
+                                ? (() => {
+                                    const colors = anonUsernameGradient;
+                                    if (anonAnimatedGradient && colors.length >= 2) {
+                                      // Create complex gradient for multi-directional animation with color mixing
+                                      if (colors.length === 2) {
+                                        return `linear-gradient(135deg, ${colors[0]} 0%, ${colors[1]} 20%, ${colors[0]} 40%, ${colors[1]} 60%, ${colors[0]} 80%, ${colors[1]} 100%)`;
+                                      } else if (colors.length === 3) {
+                                        return `linear-gradient(135deg, ${colors[0]} 0%, ${colors[1]} 16.66%, ${colors[2]} 33.33%, ${colors[0]} 50%, ${colors[1]} 66.66%, ${colors[2]} 83.33%, ${colors[0]} 100%)`;
+                                      } else {
+                                        const extendedColors = [...colors, ...colors, ...colors.slice(0, Math.ceil(colors.length / 2))];
+                                        const gradientStops = extendedColors.map((color, idx) => 
+                                          `${color} ${(idx / (extendedColors.length - 1)) * 100}%`
+                                        ).join(", ");
+                                        return `linear-gradient(135deg, ${gradientStops})`;
+                                      }
+                                    } else if (colors.length === 2) {
+                                      return `linear-gradient(90deg, ${colors[0]}, ${colors[1]})`;
+                                    } else {
+                                      return `linear-gradient(90deg, ${colors[0]}, ${colors[1]}, ${colors[2]})`;
+                                    }
+                                  })()
+                                : undefined,
+                              backgroundSize: anonAnimatedGradient && anonUsernameGradient && anonUsernameGradient.length >= 2 ? '300% 300%' : '100% 100%',
+                              WebkitBackgroundClip: anonUsernameGradient ? "text" : undefined,
+                              WebkitTextFillColor: anonUsernameGradient ? "transparent" : undefined,
+                              backgroundClip: anonUsernameGradient ? "text" : undefined,
+                            }}
+                          >
                             {anonUsername || anonUserEmail || "Anonymous User"}
                           </span>
                         </div>

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { SignInButton, SignUpButton, useUser } from "@clerk/nextjs";
-import { User, LogOut, UserPlus, LogIn, Settings } from "lucide-react";
+import { User, LogOut, UserPlus, LogIn, Settings, Sparkles } from "lucide-react";
 
 interface AccountDropdownProps {
   isAnonUser?: boolean;
@@ -103,25 +103,25 @@ export function AccountDropdown({ isAnonUser, anonUserId, onAnonLogout }: Accoun
                       className="space-y-1"
                     >
                       <SignInButton mode="modal">
-                        <motion.button
+                        <motion.div
                           whileHover={{ scale: 1.02, x: 4 }}
                           whileTap={{ scale: 0.98 }}
                           className="w-full flex items-center gap-3 px-3 py-2.5 text-[#e4e6eb] hover:bg-[#2d2f36] rounded-lg transition-colors text-sm cursor-pointer"
                         >
                           <LogIn className="w-4 h-4" />
                           Sign In
-                        </motion.button>
+                        </motion.div>
                       </SignInButton>
 
                       <SignUpButton mode="modal">
-                        <motion.button
+                        <motion.div
                           whileHover={{ scale: 1.02, x: 4 }}
                           whileTap={{ scale: 0.98 }}
                           className="w-full flex items-center gap-3 px-3 py-2.5 text-[#e4e6eb] hover:bg-[#2d2f36] rounded-lg transition-colors text-sm cursor-pointer"
                         >
                           <UserPlus className="w-4 h-4" />
                           Sign Up
-                        </motion.button>
+                        </motion.div>
                       </SignUpButton>
                     </motion.div>
 
@@ -186,6 +186,22 @@ export function AccountDropdown({ isAnonUser, anonUserId, onAnonLogout }: Accoun
                       >
                         <Settings className="w-4 h-4" />
                         Settings
+                      </motion.button>
+                      <motion.button
+                        whileHover={{
+                          scale: 1.02,
+                          x: 4,
+                          backgroundColor: "rgba(251, 191, 36, 0.1)",
+                        }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => {
+                          setIsOpen(false);
+                          router.push("/perks");
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 text-yellow-400 hover:bg-[#2d2f36] rounded-lg transition-colors text-sm cursor-pointer"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        Perks
                       </motion.button>
                       <motion.button
                         whileHover={{

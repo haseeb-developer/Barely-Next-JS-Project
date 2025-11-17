@@ -162,12 +162,15 @@ export const checkProfanityServer = async (text: string): Promise<boolean> => {
     // Continue if API fails
   }
   
-  // Layer 4: Check individual words (whole words only)
+  // Layer 4: Check individual words (only for longer words to avoid false positives)
+  // Skip common innocent words
+  const INNOCENT_WORDS = ['bro', 'what', 'who', 'why', 'how', 'when', 'where', 'the', 'and', 'but', 'for', 'you', 'are', 'was', 'were', 'been', 'have', 'has', 'had', 'this', 'that', 'with', 'from', 'they', 'them', 'their', 'there', 'these', 'those'];
   try {
     const words = text.split(/\b/).filter(w => w.trim().length > 2);
     for (const word of words) {
-      const cleanWord = word.trim().replace(/[^\w]/g, '');
-      if (cleanWord.length > 2) {
+      const cleanWord = word.trim().replace(/[^\w]/g, '').toLowerCase();
+      // Only check words longer than 4 characters and not in innocent words list
+      if (cleanWord.length > 4 && !INNOCENT_WORDS.includes(cleanWord)) {
         const response = await fetch(`https://www.purgomalum.com/service/containsprofanity?text=${encodeURIComponent(cleanWord)}`);
         if (response.ok) {
           const isProfane = await response.json();
@@ -194,11 +197,13 @@ export const checkProfanityServer = async (text: string): Promise<boolean> => {
       return false; // Contains profanity
     }
     
-    // Check individual words (whole words only)
+    // Check individual words (whole words only, skip short/common words)
+    const INNOCENT_WORDS = ['bro', 'what', 'who', 'why', 'how', 'when', 'where', 'the', 'and', 'but', 'for', 'you', 'are', 'was', 'were', 'been', 'have', 'has', 'had', 'this', 'that', 'with', 'from', 'they', 'them', 'their', 'there', 'these', 'those'];
     const words = text.split(/\b/).filter(w => w.trim().length > 2);
     for (const word of words) {
-      const cleanWord = word.trim().replace(/[^\w]/g, '');
-      if (cleanWord.length > 2 && filter.isProfane(cleanWord)) {
+      const cleanWord = word.trim().replace(/[^\w]/g, '').toLowerCase();
+      // Only check words longer than 4 characters and not in innocent words list
+      if (cleanWord.length > 4 && !INNOCENT_WORDS.includes(cleanWord) && filter.isProfane(cleanWord)) {
         return false; // Contains profanity
       }
     }

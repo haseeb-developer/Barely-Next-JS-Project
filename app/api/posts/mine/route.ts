@@ -62,17 +62,31 @@ export async function POST(request: NextRequest) {
       })
     );
 
-    // Attach profile/username for anon users
+    // Attach profile/username and customization for anon users
     if (postsWithCounts.length > 0 && postsWithCounts[0].user_type === "anonymous") {
       const { data: anon } = await supabase
         .from("anon_users")
-        .select("id, profile_picture, username")
+        .select("id, profile_picture, username, username_color, username_color_gradient, animated_gradient_enabled, gif_profile_enabled")
         .eq("id", userId)
         .maybeSingle();
+      
+      let gradientColors = null;
+      if (anon?.username_color_gradient) {
+        try {
+          gradientColors = JSON.parse(anon.username_color_gradient);
+        } catch {
+          gradientColors = null;
+        }
+      }
+      
       postsWithCounts = postsWithCounts.map((p: any) => ({
         ...p,
         profile_picture: p.profile_picture || anon?.profile_picture || null,
         username: anon?.username || p.username,
+        username_color: anon?.username_color || null,
+        username_color_gradient: gradientColors,
+        animated_gradient_enabled: anon?.animated_gradient_enabled || false,
+        gif_profile_enabled: anon?.gif_profile_enabled || false,
       }));
     } else if (postsWithCounts.length > 0 && postsWithCounts[0].user_type === "clerk") {
       // For Clerk users, return latest username and image each time
@@ -85,11 +99,14 @@ export async function POST(request: NextRequest) {
           const primary = u?.primaryEmailAddress?.emailAddress || u?.emailAddresses?.[0]?.emailAddress || null;
           const name = (u?.username || u?.firstName || (primary?.split("@")[0])) || "User";
           const isAdmin = isAdminEmail(primary);
+          const isVerifiedOwner = !!(primary && primary.toLowerCase() === "haseeb.devv@gmail.com");
           postsWithCounts = postsWithCounts.map((p: any) => ({
             ...p,
             profile_picture: imageUrl || p.profile_picture || null,
             username: name || p.username,
             is_admin: isAdmin,
+            user_email: primary || null,
+            is_verified_owner: isVerifiedOwner,
           }));
         }
       } catch {}

@@ -22,6 +22,11 @@ interface Post {
   dislikes_count: number;
   profile_picture?: string | null;
   is_admin?: boolean;
+  is_verified_owner?: boolean;
+  saved?: boolean;
+  liked?: boolean;
+  disliked?: boolean;
+  saveCount?: number | null;
 }
 
 type FilterType = "all" | "recent" | "popular";
@@ -74,10 +79,14 @@ export default function DiscoverPage() {
   const fetchPosts = async () => {
     setIsLoading(true);
     try {
+      const anonUserId = getAnonUserId();
       const url = new URL("/api/posts", window.location.origin);
       url.searchParams.set("filter", filter);
       if (selectedTag) {
         url.searchParams.set("tag", selectedTag);
+      }
+      if (anonUserId) {
+        url.searchParams.set("anonUserId", anonUserId);
       }
       
       const response = await fetch(url.toString());
@@ -85,6 +94,15 @@ export default function DiscoverPage() {
 
       if (!response.ok) {
         throw new Error(data.error || "Failed to fetch posts");
+      }
+
+      // Debug: Check for verified owner posts
+      const verifiedPosts = (data.posts || []).filter((p: any) => p.is_verified_owner);
+      if (verifiedPosts.length > 0) {
+        console.log(`[Discover Page] Found ${verifiedPosts.length} verified owner posts:`, verifiedPosts);
+      } else {
+        console.log(`[Discover Page] No verified owner posts found. Total posts: ${(data.posts || []).length}`);
+        console.log(`[Discover Page] Sample post data:`, (data.posts || [])[0]);
       }
 
       setPosts(data.posts || []);

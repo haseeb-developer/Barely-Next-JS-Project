@@ -21,7 +21,7 @@ export function HeaderNav() {
   const navLinks = [
     { href: "/trending", label: "Trending" },
     { href: "/discover", label: "Discover" },
-    { href: "/my", label: "My Confessions" },
+    { href: "/my", label: "My Activity" },
   ];
 
   const isActive = (href: string) => pathname === href;

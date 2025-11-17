@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
     const { data: user, error } = await supabase
       .from("anon_users")
-      .select("profile_picture")
+      .select("profile_picture, previous_usernames, gif_profile_enabled")
       .eq("id", anonUserId)
       .maybeSingle();
 
@@ -32,6 +32,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       profilePicture: user?.profile_picture || null,
+      previousUsernames: (user?.previous_usernames || []) as string[],
+      gif_profile_enabled: user?.gif_profile_enabled || false,
     });
   } catch (error) {
     console.error("Error in get profile picture API:", error);

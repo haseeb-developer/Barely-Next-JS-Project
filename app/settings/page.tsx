@@ -4,10 +4,11 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
-import { getAnonUserId, getAnonUsername } from "@/app/lib/anon-auth";
-import { ArrowLeft, User, Upload, X, Check } from "lucide-react";
+import { getAnonUserId, getAnonUsername, setAnonUsername as setAnonUsernameInStorage } from "@/app/lib/anon-auth";
+import { ArrowLeft, User, Upload, X, Check, Edit2 } from "lucide-react";
 import toast from "react-hot-toast";
 import Image from "next/image";
+import { InsufficientTokensAlert } from "@/app/components/InsufficientTokensAlert";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -22,6 +23,17 @@ export default function SettingsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+
+  // Username change states
+  const [previousUsernames, setPreviousUsernames] = useState<string[]>([]);
+  const [newUsername, setNewUsername] = useState("");
+  const [tokenBalance, setTokenBalance] = useState<number>(0);
+  const [isChangingUsername, setIsChangingUsername] = useState(false);
+  const [showInsufficientTokensAlert, setShowInsufficientTokensAlert] = useState(false);
+  const [tokensNeeded, setTokensNeeded] = useState(0);
+  const [requiredTokens, setRequiredTokens] = useState(1000);
+  const [gifProfileEnabled, setGifProfileEnabled] = useState(false);
+  const [isPurchasingGif, setIsPurchasingGif] = useState(false);
 
   // Initialize client-side only values after hydration
   useEffect(() => {
@@ -57,6 +69,7 @@ export default function SettingsPage() {
           setOriginalProfilePicture(data.profilePicture);
           setPreviewPicture(null);
           setHasChanges(false);
+          setGifProfileEnabled(data.gif_profile_enabled || false);
         }
       } catch (error) {
         console.error("Error fetching profile picture:", error);
@@ -66,23 +79,77 @@ export default function SettingsPage() {
     fetchProfilePicture();
   }, [anonUserId, clerkUser]);
 
+  // Fetch token balance and previous username for anonymous users
+  useEffect(() => {
+    const fetchUserData = async () => {
+      if (!anonUserId || clerkUser) return;
+
+      try {
+        // Fetch token balance
+        const tokenResponse = await fetch(`/api/tokens?anonUserId=${anonUserId}`);
+        const tokenData = await tokenResponse.json();
+        if (tokenResponse.ok) {
+          setTokenBalance(tokenData.balance || 0);
+        }
+
+        // Fetch previous usernames from user data
+        const userResponse = await fetch(`/api/users/profile-picture?anonUserId=${anonUserId}`);
+        const userData = await userResponse.json();
+        if (userResponse.ok && userData.previousUsernames) {
+          setPreviousUsernames(userData.previousUsernames || []);
+        }
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+      }
+    };
+
+    fetchUserData();
+  }, [anonUserId, clerkUser]);
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     // Validate file type
-    if (!file.type.startsWith("image/")) {
+    const isImage = file.type.startsWith("image/");
+    const isGif = file.type === "image/gif";
+    
+    if (!isImage) {
       toast.error("Please upload an image file");
       return;
     }
 
-    // Validate file size (max 2MB)
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("Image size must be less than 2MB");
+    // Check if GIF is allowed
+    if (isGif && !gifProfileEnabled) {
+      toast.error("GIF profile feature is not enabled. Purchase it to upload GIFs.");
+      return;
+    }
+
+    // Validate file size (max 2MB for images, 5MB for GIFs)
+    const maxSize = isGif ? 5 * 1024 * 1024 : 2 * 1024 * 1024;
+    if (file.size > maxSize) {
+      toast.error(`File size must be less than ${isGif ? '5MB' : '2MB'}`);
       return;
     }
 
     setIsUploading(true);
+
+    // For GIFs, convert directly to base64 without resizing
+    if (isGif) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        setPreviewPicture(result);
+        setHasChanges(true);
+        setIsUploading(false);
+      };
+      reader.onerror = () => {
+        toast.error("Failed to read GIF file");
+        setIsUploading(false);
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
 
     // Resize/compress image before preview to keep DB payload small
     const resizeImage = async (file: File, maxSize = 256): Promise<string> => {
@@ -220,6 +287,124 @@ export default function SettingsPage() {
     }
   };
 
+  const handlePurchaseGifProfile = async () => {
+    if (!anonUserId) return;
+
+    const GIF_PROFILE_COST = 1000;
+    if (tokenBalance < GIF_PROFILE_COST) {
+      const needed = GIF_PROFILE_COST - tokenBalance;
+      setTokensNeeded(needed);
+      setRequiredTokens(GIF_PROFILE_COST);
+      setShowInsufficientTokensAlert(true);
+      return;
+    }
+
+    setIsPurchasingGif(true);
+    try {
+      const response = await fetch("/api/users/gif-profile", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          anonUserId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (data.error === "Insufficient tokens") {
+          const needed = data.tokensNeeded || GIF_PROFILE_COST - tokenBalance;
+          setTokensNeeded(needed);
+          setRequiredTokens(data.required || GIF_PROFILE_COST);
+          setShowInsufficientTokensAlert(true);
+          return;
+        }
+        throw new Error(data.error || "Failed to purchase GIF profile feature");
+      }
+
+      setGifProfileEnabled(true);
+      setTokenBalance(data.newBalance);
+      toast.success("GIF profile feature enabled! You can now upload GIF profile pictures.");
+    } catch (error: any) {
+      console.error("Error purchasing GIF profile:", error);
+      toast.error(error.message || "Failed to purchase GIF profile feature");
+    } finally {
+      setIsPurchasingGif(false);
+    }
+  };
+
+  const handleChangeUsername = async () => {
+    if (!anonUserId || !newUsername.trim()) {
+      toast.error("Please enter a new username");
+      return;
+    }
+
+    // Combine "anon-" prefix with user input
+    const fullUsername = `anon-${newUsername.trim().toLowerCase()}`;
+
+    // Check if user has enough tokens
+    const USERNAME_CHANGE_COST = 1000;
+    if (tokenBalance < USERNAME_CHANGE_COST) {
+      const needed = USERNAME_CHANGE_COST - tokenBalance;
+      setTokensNeeded(needed);
+      setShowInsufficientTokensAlert(true);
+      return;
+    }
+
+    setIsChangingUsername(true);
+    try {
+      const response = await fetch("/api/users/change-username", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          anonUserId,
+          newUsername: fullUsername,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (data.error === "Insufficient tokens") {
+          const needed = data.tokensNeeded || USERNAME_CHANGE_COST - tokenBalance;
+          setTokensNeeded(needed);
+          setShowInsufficientTokensAlert(true);
+          return;
+        }
+        throw new Error(data.error || "Failed to change username");
+      }
+
+      // Update local storage with new username
+      setAnonUsernameInStorage(data.newUsername);
+      
+      // Update state
+      setAnonUsername(data.newUsername);
+      setNewUsername("");
+      setTokenBalance(data.newBalance);
+      
+      // Refresh previous usernames
+      const refreshResponse = await fetch(`/api/users/profile-picture?anonUserId=${anonUserId}`);
+      const refreshData = await refreshResponse.json();
+      if (refreshResponse.ok && refreshData.previousUsernames) {
+        setPreviousUsernames(refreshData.previousUsernames || []);
+      }
+      
+      toast.success("Username changed successfully!");
+      
+      // Refresh the page to update all displayed usernames
+      window.location.reload();
+    } catch (error: any) {
+      console.error("Error changing username:", error);
+      toast.error(error.message || "Failed to change username");
+    } finally {
+      setIsChangingUsername(false);
+    }
+  };
+
   // Don't render until client-side hydration is complete
   if (!isClient) {
     return (
@@ -324,13 +509,21 @@ export default function SettingsPage() {
                       whileHover={{ scale: 1.05 }}
                       className="w-24 h-24 rounded-full overflow-hidden border-4 border-[#5865f2] bg-[#1a1b23]"
                     >
-                      <Image
-                        src={previewPicture || profilePicture || ""}
-                        alt="Profile"
-                        width={96}
-                        height={96}
-                        className="w-full h-full object-cover"
-                      />
+                      {(previewPicture || profilePicture)?.startsWith("data:image/gif") ? (
+                        <img
+                          src={previewPicture || profilePicture || ""}
+                          alt="Profile"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Image
+                          src={previewPicture || profilePicture || ""}
+                          alt="Profile"
+                          width={96}
+                          height={96}
+                          className="w-full h-full object-cover"
+                        />
+                      )}
                     </motion.div>
                     {previewPicture && (
                       <motion.div
@@ -357,7 +550,7 @@ export default function SettingsPage() {
                     <span>{profilePicture || previewPicture ? "Change Picture" : "Upload Picture"}</span>
                     <input
                       type="file"
-                      accept="image/*"
+                      accept={gifProfileEnabled ? "image/*" : "image/png,image/jpeg,image/jpg,image/webp"}
                       onChange={handleImageUpload}
                       className="hidden"
                       disabled={isUploading || isSaving}
@@ -443,12 +636,192 @@ export default function SettingsPage() {
                 )}
 
                 <p className="text-xs text-[#b9bbbe]">
-                  Upload a profile picture (max 2MB). This will be visible on all your posts.
+                  Upload a profile picture ({gifProfileEnabled ? 'GIF max 5MB, other images max 2MB' : 'max 2MB'}). This will be visible on all your posts.
                 </p>
+
+                {/* GIF Profile Feature Section */}
+                {!gifProfileEnabled && (
+                  <div className="mt-4 p-4 bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[#e4e6eb] mb-1 flex items-center gap-2">
+                          <span className="text-lg">🎬</span>
+                          GIF Profile Feature
+                        </h3>
+                        <p className="text-xs text-[#b9bbbe]">
+                          Unlock the ability to upload animated GIF profile pictures
+                        </p>
+                      </div>
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={handlePurchaseGifProfile}
+                        disabled={isPurchasingGif}
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      >
+                        {isPurchasingGif ? (
+                          <>
+                            <motion.div
+                              animate={{ rotate: 360 }}
+                              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                              className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
+                            />
+                            <span>Purchasing...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Purchase</span>
+                            <span className="text-yellow-400 font-bold">(1000 tokens)</span>
+                          </>
+                        )}
+                      </motion.button>
+                    </div>
+                  </div>
+                )}
+
+                {gifProfileEnabled && (
+                  <div className="mt-4 p-3 bg-green-500/20 border border-green-500/30 rounded-lg">
+                    <p className="text-xs text-green-400 font-medium flex items-center gap-2">
+                      <span>✓</span>
+                      GIF profile feature enabled - You can upload animated GIFs!
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
           </>
+          )}
+
+          {/* Change Username Section - Only for Anonymous Users */}
+          {!clerkUser && (
+            <div className="mb-8 pt-6 border-t border-[#3d3f47]">
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-6"
+              >
+                <h2 className="text-lg sm:text-xl font-semibold text-[#e4e6eb] mb-2 flex items-center gap-2">
+                  <Edit2 className="w-5 h-5 text-[#5865f2]" />
+                  Change Username
+                </h2>
+                <p className="text-sm text-[#b9bbbe]">
+                  Update your username across all posts and comments
+                </p>
+              </motion.div>
+              
+              <div className="space-y-5">
+                {/* Current Username Display */}
+                <motion.div
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="p-4 bg-gradient-to-br from-[#1a1b23] to-[#2d2f36] rounded-xl border border-[#3d3f47] shadow-lg"
+                >
+                  <p className="text-xs text-[#9aa0a6] mb-2 uppercase tracking-wide">Current Username</p>
+                  <p className="text-[#e4e6eb] font-semibold text-lg">{anonUsername || "N/A"}</p>
+                </motion.div>
+
+                {/* Previous Usernames Display */}
+                {previousUsernames.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="p-4 bg-gradient-to-br from-[#1a1b23] to-[#2d2f36] rounded-xl border border-[#3d3f47] shadow-lg"
+                  >
+                    <p className="text-xs text-[#9aa0a6] mb-3 uppercase tracking-wide">
+                      Previous Usernames ({previousUsernames.length})
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {previousUsernames.map((username, index) => (
+                        <motion.div
+                          key={index}
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: 0.3 + index * 0.05 }}
+                          className="px-3 py-1.5 bg-[#2d2f36] border border-[#3d3f47] rounded-lg text-[#b9bbbe] text-sm font-medium"
+                        >
+                          {username}
+                        </motion.div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* New Username Input */}
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="space-y-4"
+                >
+                  <div>
+                    <label className="block text-sm font-medium text-[#e4e6eb] mb-3">
+                      New Username
+                    </label>
+                    <div className="inline-flex items-center shadow-lg">
+                      {/* Fixed "anon-" prefix */}
+                      <div className="px-4 py-3 bg-gradient-to-br from-[#5865f2] to-[#4752c4] border border-[#5865f2] rounded-l-xl text-white font-semibold text-sm">
+                        anon-
+                      </div>
+                      {/* Input for the rest of the username */}
+                      <input
+                        type="text"
+                        value={newUsername}
+                        onChange={(e) => {
+                          // Only allow alphanumeric, hyphens, and underscores after anon-
+                          const value = e.target.value.replace(/[^a-zA-Z0-9_-]/g, '');
+                          setNewUsername(value);
+                        }}
+                        placeholder="yourname"
+                        className="w-56 px-4 py-3 bg-[#1a1b23] border border-l-0 border-[#3d3f47] rounded-r-xl text-[#e4e6eb] placeholder-[#6b7280] focus:outline-none focus:ring-2 focus:ring-[#5865f2] focus:border-[#5865f2] transition-all"
+                        disabled={isChangingUsername}
+                      />
+                    </div>
+                    {!newUsername.trim() && (
+                      <p className="mt-2 text-xs text-[#9aa0a6]">
+                        Enter the part after "anon-" (e.g., "raregem" for "anon-raregem")
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Change Username Button */}
+                  <div className="flex flex-col items-start gap-3">
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={handleChangeUsername}
+                      disabled={isChangingUsername || !newUsername.trim()}
+                      className="px-6 py-3 bg-gradient-to-r from-[#5865f2] to-[#4752c4] hover:from-[#4752c4] hover:to-[#5865f2] text-white font-semibold rounded-xl transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-[#5865f2]/30"
+                    >
+                      {isChangingUsername ? (
+                        <>
+                          <motion.div
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                            className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
+                          />
+                          <span>Changing Username...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Edit2 className="w-4 h-4" />
+                          <span>Change Username</span>
+                          <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded-md text-xs font-bold">
+                            1000 tokens
+                          </span>
+                        </>
+                      )}
+                    </motion.button>
+
+                    <p className="text-xs text-[#9aa0a6] max-w-md">
+                      Changing your username will update it in all your previous posts and comments.
+                    </p>
+                  </div>
+                </motion.div>
+              </div>
+            </div>
           )}
 
           {/* User Info Section */}
@@ -486,6 +859,15 @@ export default function SettingsPage() {
           </div>
         </motion.div>
       </div>
+
+      {/* Insufficient Tokens Alert */}
+      <InsufficientTokensAlert
+        isOpen={showInsufficientTokensAlert}
+        onClose={() => setShowInsufficientTokensAlert(false)}
+        tokensNeeded={tokensNeeded}
+        currentBalance={tokenBalance}
+        required={requiredTokens || 1000}
+      />
     </div>
   );
 }
